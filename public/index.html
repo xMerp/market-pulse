@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f4f5f1" />
+    <meta name="description" content="Live Indian F&O company news, AI headline sentiment and stock quote snapshots." />
+    <title>Market Pulse — Indian F&O News</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <a class="brand" href="/" aria-label="Market Pulse home">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span class="brand-name">market<span>pulse</span></span>
+        </a>
+
+        <div class="sidebar-kicker">YOUR DESK</div>
+        <nav class="side-nav" aria-label="Main navigation">
+          <button class="nav-item active" id="feedNav" type="button">
+            <span class="nav-icon icon-pulse" aria-hidden="true">⌁</span>
+            <span>Live feed</span>
+            <span class="nav-live-dot"></span>
+          </button>
+          <button class="nav-item" id="universeNav" type="button">
+            <span class="nav-icon" aria-hidden="true">▦</span>
+            <span>F&amp;O companies</span>
+            <span class="nav-count" id="navUniverseCount">—</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-kicker watchlist-kicker">QUICK LOOK</div>
+        <div id="quickCompanies" class="quick-companies" aria-label="Quick company filters">
+          <div class="sidebar-loading"><span class="mini-spinner"></span> Syncing universe</div>
+        </div>
+        <button class="view-all-button" id="viewAllButton" type="button">View all companies <span>↗</span></button>
+
+        <div class="sidebar-bottom">
+          <div class="side-session"><span class="session-dot" id="sideSessionDot"></span><span id="sideSession">Checking market</span></div>
+          <div class="side-note">News, sentiment &amp; quotes<br />for India's F&amp;O market.</div>
+          <div class="side-brand-line">BUILT FOR A FASTER READ <span>✳</span></div>
+        </div>
+      </aside>
+
+      <main class="main-area">
+        <header class="topbar">
+          <button class="mobile-menu" id="mobileMenu" type="button" aria-label="Toggle navigation"><span></span><span></span></button>
+          <div class="breadcrumb"><span>Markets</span><b>/</b><strong>India F&amp;O</strong></div>
+          <div class="topbar-right">
+            <div class="market-status"><span class="status-pip" id="marketPip"></span><span id="marketStatus">Loading market</span></div>
+            <span class="topbar-divider"></span>
+            <time class="top-date" id="todayLabel"></time>
+          </div>
+        </header>
+
+        <div class="content-wrap">
+          <section class="page-intro">
+            <div class="intro-copy">
+              <div class="eyebrow"><span class="eyebrow-line"></span> THE INDIAN DERIVATIVES DESK <span class="eyebrow-dot">·</span> <span id="universeLabel">F&amp;O UNIVERSE</span></div>
+              <h1>Markets move.<br /><em>Stay in the know.</em></h1>
+              <p class="intro-sub">The latest company headlines, a quick read on the tone, and the price action alongside it.</p>
+            </div>
+            <div class="intro-actions">
+              <div class="last-updated"><span class="live-ring"><i></i></span><span><strong>LIVE DESK</strong><small id="lastUpdated">Connecting to feeds</small></span></div>
+              <button class="refresh-button" id="refreshButton" type="button"><span class="refresh-icon">↻</span> Refresh feed</button>
+            </div>
+          </section>
+
+          <section class="ticker-strip" aria-label="Market indices">
+            <div class="ticker-label"><span class="ticker-spark">⌁</span> MARKET PULSE <span class="ticker-separator">/</span> <span id="indexUpdated">LIVE</span></div>
+            <div class="index-card" id="niftyCard">
+              <div class="index-name">NIFTY 50 <span class="index-market-dot"></span></div>
+              <div class="index-bottom"><strong id="niftyValue">—</strong><span id="niftyChange" class="index-change">—</span></div>
+            </div>
+            <div class="ticker-divider"></div>
+            <div class="index-card" id="bankCard">
+              <div class="index-name">NIFTY BANK <span class="index-market-dot"></span></div>
+              <div class="index-bottom"><strong id="bankValue">—</strong><span id="bankChange" class="index-change">—</span></div>
+            </div>
+            <div class="ticker-endnote">Quotes are exchange snapshots<br />and may be delayed.</div>
+          </section>
+
+          <section class="overview-grid" aria-label="Feed overview">
+            <article class="overview-card overview-total">
+              <div class="overview-top"><span>STORIES TRACKED</span><span class="overview-icon">↗</span></div>
+              <div class="overview-value" id="storyCount">—</div>
+              <div class="overview-foot"><span class="metric-bullet"></span><span>F&amp;O companies only</span></div>
+            </article>
+            <article class="overview-card overview-positive">
+              <div class="overview-top"><span>POSITIVE TONE</span><span class="tone-emoji">😊</span></div>
+              <div class="overview-value" id="positiveCount">—</div>
+              <div class="overview-foot"><span class="metric-bullet"></span><span>Potential tailwinds</span></div>
+            </article>
+            <article class="overview-card overview-neutral">
+              <div class="overview-top"><span>NEUTRAL TONE</span><span class="tone-emoji">😐</span></div>
+              <div class="overview-value" id="neutralCount">—</div>
+              <div class="overview-foot"><span class="metric-bullet"></span><span>Watch for follow-through</span></div>
+            </article>
+            <article class="overview-card overview-negative">
+              <div class="overview-top"><span>NEGATIVE TONE</span><span class="tone-emoji">☹️</span></div>
+              <div class="overview-value" id="negativeCount">—</div>
+              <div class="overview-foot"><span class="metric-bullet"></span><span>Potential headwinds</span></div>
+            </article>
+          </section>
+
+          <section class="feed-section" aria-labelledby="feedTitle">
+            <div class="feed-heading-row">
+              <div class="feed-title-group">
+                <div class="feed-overline"><span class="feed-live-dot"></span> THE WIRE <span class="heading-slash">/</span> UPDATED CONTINUOUSLY</div>
+                <h2 id="feedTitle">Company news <span id="focusedLabel"></span></h2>
+              </div>
+              <label class="search-wrap" for="companySearch">
+                <span aria-hidden="true" class="search-icon">⌕</span>
+                <input id="companySearch" type="search" placeholder="Search F&amp;O companies" autocomplete="off" />
+                <kbd>Ctrl K</kbd>
+              </label>
+            </div>
+
+            <div class="filter-row">
+              <div class="sentiment-filters" role="group" aria-label="Filter stories by sentiment">
+                <button class="filter-chip selected" data-sentiment="all" type="button">All stories <span id="allFilterCount">—</span></button>
+                <button class="filter-chip" data-sentiment="positive" type="button"><span class="filter-face">😊</span> Positive <span id="positiveFilterCount">—</span></button>
+                <button class="filter-chip" data-sentiment="neutral" type="button"><span class="filter-face">😐</span> Neutral <span id="neutralFilterCount">—</span></button>
+                <button class="filter-chip" data-sentiment="negative" type="button"><span class="filter-face">☹️</span> Negative <span id="negativeFilterCount">—</span></button>
+              </div>
+              <button class="clear-focus hidden" id="clearFocus" type="button">All F&amp;O stories <span>×</span></button>
+              <div class="feed-sort"><span class="sort-clock">◷</span> Latest first</div>
+            </div>
+
+            <div class="feed-layout">
+              <div class="story-list" id="storyList" aria-live="polite" aria-busy="true">
+                <div class="loading-state"><span class="spinner"></span><strong>Finding the latest stories</strong><span>Checking market desks across India…</span></div>
+              </div>
+              <aside class="feed-aside">
+                <div class="aside-card movers-card">
+                  <div class="aside-card-heading"><div><span class="aside-eyebrow">ON THE RADAR</span><h3>Quick movers</h3></div><span class="radar-mark">◎</span></div>
+                  <div class="movers-list" id="moversList"><div class="movers-empty">Waiting for live quotes</div></div>
+                  <button class="aside-link" id="moversAllButton" type="button">Explore all F&amp;O companies <span>↗</span></button>
+                </div>
+                <div class="aside-card sources-card">
+                  <div class="sources-heading"><span class="sources-icon">✳</span><div><span class="aside-eyebrow">THE NEWSROOM</span><h3>Multiple desks.<br />One clearer view.</h3></div></div>
+                  <p>Headlines from India's leading financial newsrooms, matched to companies in the derivatives market.</p>
+                  <div class="source-tags" id="sourceTags"><span>Moneycontrol</span><span>Economic Times</span><span>Mint</span><span>Business Standard</span><span>Financial Express</span></div>
+                </div>
+                <div class="signal-note"><div class="signal-note-icon">✧</div><p><strong>A note on sentiment</strong>Each story is read for company-specific tone. Sentiment describes the headline, not a price prediction or a trade recommendation.</p></div>
+              </aside>
+            </div>
+
+            <footer class="page-footer">
+              <span>Market Pulse <b>·</b> For information only. Headlines link to their original publishers.</span>
+              <span><i class="footer-live-dot"></i><span id="footerProvider">Connecting to live sources</span></span>
+            </footer>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <dialog class="universe-dialog" id="universeDialog" aria-labelledby="universeDialogTitle">
+      <div class="dialog-head">
+        <div><span class="aside-eyebrow">NSE DERIVATIVES MARKET</span><h2 id="universeDialogTitle">F&amp;O companies</h2><p id="dialogUniverseCount">Companies update from the live exchange universe.</p></div>
+        <button class="dialog-close" id="dialogClose" type="button" aria-label="Close company list">×</button>
+      </div>
+      <label class="dialog-search" for="universeSearch"><span>⌕</span><input id="universeSearch" type="search" placeholder="Search by company or symbol" /></label>
+      <div class="universe-list" id="universeList"></div>
+      <div class="dialog-foot"><span class="session-dot"></span><span id="universeSourceNote">Exchange constituent list</span><span class="dialog-foot-count" id="dialogCount">—</span></div>
+    </dialog>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
