@@ -222,6 +222,8 @@ kbd { padding: 2px 4px; border: 1px solid #e4e8e3; border-radius: 3px; color: #9
 .page-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 22px; padding-top: 13px; border-top: 1px solid #e3e8e1; color: #9ba49d; font-size: 8px; }
 .page-footer > span:last-child { display: flex; align-items: center; gap: 6px; font: 8px 'DM Mono', monospace; }
 .page-footer b { color: #c3cbc4; font-weight: 400; }
+.page-footer .footer-signature { color: #849187; font: 8px 'DM Mono', monospace; letter-spacing: .04em; white-space: nowrap; }
+.page-footer .footer-signature strong { color: #536a59; font-weight: 500; }
 .footer-live-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #66b883; }
 .loading-state, .empty-state { min-height: 190px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 1px solid #e5e9e3; border-radius: 7px; background: #fbfcf9; color: #8e9991; text-align: center; }
 .loading-state strong, .empty-state strong { color: #55655a; font: 600 12px 'Manrope', sans-serif; }
