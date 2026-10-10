@@ -104,8 +104,20 @@ function renderMarket() {
   }
   const quoteTime = payload?.data?.quotesUpdatedAt;
   $('#indexTimestamp').textContent = quoteTime ? `Snapshot ${when(quoteTime)} · delayed` : 'Waiting for NSE MCP snapshot';
-  const movers = (payload?.movers || []).filter((stock) => stock.changePct !== null && stock.changePct !== undefined).slice(0, 6);
-  $('#marketGrid').innerHTML = movers.length ? movers.slice(0, 4).map((stock) => {
+  const movers = (payload?.quotes || [])
+    .filter((stock) => stock.changePct !== null && stock.changePct !== undefined && Number.isFinite(Number(stock.changePct)))
+    .sort((a, b) => Number(b.changePct) - Number(a.changePct))
+    .slice(0, 4);
+  $('#marketGrid').innerHTML = movers.length ? movers.map((stock) => {
+    const value = Number(stock.changePct);
+    const tone = value > 0 ? 'up' : value < 0 ? 'down' : 'flat';
+    return `<button class="market-tile" type="button" data-symbol="${escapeHtml(stock.symbol)}"><span class="tile-top"><span class="tile-symbol">${escapeHtml(stock.symbol)}</span><span class="tile-arrow">↗</span></span><span class="tile-name">${escapeHtml(stock.name)}</span><span class="tile-bottom"><strong>${Number.isFinite(Number(stock.price)) ? escapeHtml(money.format(Number(stock.price))) : '—'}</strong><span class="quote-change ${tone}">${escapeHtml(signed(value))}</span></span></button>`;
+  }).join('') : `<div class="market-empty"><span>⌁</span><strong>${payload?.data?.mcpError ? 'NSE snapshot unavailable' : 'Waiting for NSE MCP data'}</strong><span>Live quote cards appear when the official market snapshot responds.</span></div>`;
+  const bottomFour = (payload?.quotes || [])
+    .filter((stock) => stock.changePct !== null && stock.changePct !== undefined && Number.isFinite(Number(stock.changePct)))
+    .sort((a, b) => Number(a.changePct) - Number(b.changePct))
+    .slice(0, 4);
+  $('#losersGrid').innerHTML = bottomFour.length ? bottomFour.map((stock) => {
     const value = Number(stock.changePct);
     const tone = value > 0 ? 'up' : value < 0 ? 'down' : 'flat';
     return `<button class="market-tile" type="button" data-symbol="${escapeHtml(stock.symbol)}"><span class="tile-top"><span class="tile-symbol">${escapeHtml(stock.symbol)}</span><span class="tile-arrow">↗</span></span><span class="tile-name">${escapeHtml(stock.name)}</span><span class="tile-bottom"><strong>${Number.isFinite(Number(stock.price)) ? escapeHtml(money.format(Number(stock.price))) : '—'}</strong><span class="quote-change ${tone}">${escapeHtml(signed(value))}</span></span></button>`;
