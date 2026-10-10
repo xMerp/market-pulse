@@ -39,10 +39,13 @@
           <div class="hero-meta"><span class="meta-pulse"><i></i> UPDATES AUTOMATICALLY</span><span class="meta-divider">·</span><span id="lastUpdated">Connecting to news desks</span></div>
         </div>
         <article class="index-card" aria-label="NIFTY 50 index snapshot">
-          <div class="index-card-top"><span class="index-card-label"><i class="index-mark">N</i> NIFTY 50</span><span class="snapshot-badge"><i></i> NSE SNAPSHOT</span></div>
-          <div class="index-main"><strong id="indexValue">—</strong><span id="indexUnit">POINTS</span></div>
-          <div class="index-card-bottom"><span id="indexChange" class="index-change">Waiting for NSE MCP</span><span class="index-period">TODAY</span></div>
-          <div class="index-card-foot"><span id="indexTimestamp">Price data usually 1–3 min delayed</span><span class="index-arrow" aria-hidden="true">↗</span></div>
+          <div class="index-card-top"><span class="index-card-label"><i class="index-mark">N</i> NIFTY 50</span><span class="snapshot-badge" id="snapshotBadge"><i></i> NSE SNAPSHOT</span></div>
+          <div id="indexQuoteContent">
+            <div class="index-main"><strong id="indexValue">—</strong><span id="indexUnit">POINTS</span></div>
+            <div class="index-card-bottom"><span id="indexChange" class="index-change">Waiting for NSE MCP</span><span class="index-period" id="indexPeriod">—</span></div>
+            <div class="index-card-foot"><span id="indexTimestamp">Price data usually 1–3 min delayed</span><span class="index-arrow" aria-hidden="true">↗</span></div>
+          </div>
+          <div class="daily-mood" aria-live="polite"><div><span class="quote-label">DAILY MARKET MOOD</span><strong id="moodLabel">Not enough headlines</strong></div><span id="moodScore" class="mood-score flat">—</span></div>
         </article>
       </section>
 
@@ -53,14 +56,20 @@
         <article class="overview-card negative-card"><div class="metric-label">NEGATIVE READ <span class="metric-emoji">☹️</span></div><div class="metric-value" id="negativeCount">—</div><div class="metric-foot">Potential company headwinds</div></article>
       </section>
 
-      <section class="market-section" aria-labelledby="marketTitle">
+      <section class="market-section" id="marketSection" aria-labelledby="marketTitle">
         <div class="section-heading market-heading">
           <div><div class="section-kicker"><span class="section-kicker-mark">⌁</span> NIFTY 50 / MARKET TAPE</div><h2 id="marketTitle">The day’s biggest moves</h2></div>
+          <span class="market-date-label hidden" id="marketDateLabel"></span>
           <button class="text-button" id="universeButton" type="button">Browse all 50 <span aria-hidden="true">↗</span></button>
         </div>
         <div class="market-grid" id="marketGrid"><div class="market-loading"><span class="mini-spinner"></span> Waiting for NSE MCP snapshot</div></div>
         <div class="section-heading" style="margin-top:23px"><h3 style="margin:0;color:var(--ink);font:600 18px var(--display)">The day’s weakest performers</h3><span class="section-kicker-soft" style="font:10px var(--mono);letter-spacing:.08em">BOTTOM 4</span></div>
         <div class="market-grid" id="losersGrid"><div class="market-loading"><span class="mini-spinner"></span> Waiting for NSE MCP snapshot</div></div>
+      </section>
+
+      <section class="sector-section hidden" id="sectorSection" aria-labelledby="sectorTitle">
+        <div class="section-heading sector-heading"><div><div class="section-kicker"><span class="section-kicker-mark">▦</span> NIFTY 50 / SECTOR TONE</div><h2 id="sectorTitle">Sector sentiment heatmap</h2></div><span class="sector-coverage" id="sectorCoverage"></span></div>
+        <div class="sector-grid" id="sectorGrid"></div>
       </section>
 
       <section class="feed-section" id="feed" aria-labelledby="feedTitle">
@@ -81,6 +90,7 @@
           <div class="story-list" id="storyList" aria-live="polite" aria-busy="true"><div class="loading-state"><span class="spinner"></span><strong>Opening the wire</strong><span>Collecting company headlines and the latest NSE snapshot…</span></div></div>
           <aside class="feed-rail">
             <section class="rail-card movers-card"><div class="rail-heading"><div><span class="rail-kicker">VOLATILITY WATCH</span><h3>Fast movers</h3></div><span class="rail-icon">◎</span></div><div id="moversList" class="movers-list"><div class="rail-empty">Waiting for market snapshot</div></div><button class="rail-action" id="moversAllButton" type="button">Open the 50-stock list <span>↗</span></button></section>
+            <section class="rail-card divergence-card hidden" id="divergenceSection" aria-labelledby="divergenceTitle"><div class="rail-heading"><div><span class="rail-kicker">HEADLINE / PRICE DIVERGENCE</span><h3 id="divergenceTitle">News against the move</h3></div><span class="rail-icon">↕</span></div><div id="divergenceList" class="divergence-list"></div></section>
             <section class="rail-card sources-card"><div class="rail-heading"><div><span class="rail-kicker">THE NEWSROOM</span><h3>Five desks.<br />One company view.</h3></div><span class="newsroom-star">✳</span></div><p>Headlines are collected from these finance publishers, then matched only to current NIFTY 50 constituents.</p><div class="source-tags" id="sourceTags"><span>Moneycontrol</span><span>Economic Times</span><span>Mint</span><span>Business Standard</span><span>Financial Express</span></div></section>
             <section class="rail-note"><span class="rail-note-mark">✧</span><div><strong>A note on sentiment</strong><p>Emoji labels describe the company-specific headline tone. They are not price forecasts or trade recommendations.</p></div></section>
             <div class="data-source"><span class="data-source-icon">⌁</span><div><strong id="mcpStatus">NSE MCP / connecting</strong><span id="mcpFreshness">Market prices usually 1–3 minutes delayed</span></div></div>

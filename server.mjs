@@ -17,6 +17,7 @@ function loadEnv(file) {
 }
 loadEnv(path.join(ROOT, '.env'));
 const { buildFeed, healthPayload } = await import('./lib/feed.mjs');
+const { readDailySnapshots } = await import('./lib/snapshots.mjs');
 
 function json(response, status, payload) {
   response.writeHead(status, { 'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff' });
@@ -31,6 +32,16 @@ const server = http.createServer(async (request, response) => {
   if (url.pathname.startsWith('/api/')) {
     if (request.method !== 'GET') return json(response, 405, { error:'Method not allowed' });
     if (url.pathname === '/api/health') return json(response, 200, healthPayload());
+    if (url.pathname === '/api/snapshots') {
+      const from = url.searchParams.get('from') || '';
+      const to = url.searchParams.get('to') || '';
+      if ((from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to))) return json(response, 400, { error:'Use YYYY-MM-DD for from and to.' });
+      try { return json(response, 200, await readDailySnapshots({ from, to })); }
+      catch (error) {
+        console.error(`[snapshots] ${error.stack || error}`);
+        return json(response, 502, { error:'Daily snapshots could not be read.' });
+      }
+    }
     if (url.pathname === '/api/feed') {
       try { return json(response, 200, await buildFeed(url.searchParams.get('symbol') || '', url.searchParams.get('refresh') === '1')); }
       catch (error) {

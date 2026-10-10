@@ -11,6 +11,16 @@ function escapeHtml(value = '') {
 function safeUrl(value) {
   try { const url = new URL(value); return url.protocol === 'https:' ? url.href : '#'; } catch { return '#'; }
 }
+function formatMarketDate(value, options = { day:'numeric', month:'short', year:'numeric' }) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return '';
+  const date = new Date(`${value}T12:00:00+05:30`);
+  return new Intl.DateTimeFormat('en-IN', { ...options, timeZone:'Asia/Kolkata' }).format(date);
+}
+function todayInIndia() {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone:'Asia/Kolkata', year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(new Date());
+  const part = (type) => parts.find((entry) => entry.type === type)?.value || '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
 function signed(value, suffix = '%') {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
   const number = Number(value);
@@ -50,8 +60,10 @@ function storyCard(item) {
   const quote = item.quote;
   const move = quote?.changePct;
   const quoteClass = Number(move) > 0 ? 'up' : Number(move) < 0 ? 'down' : 'flat';
-  const price = Number.isFinite(Number(quote?.price)) ? money.format(Number(quote.price)) : 'Quote unavailable';
+  const price = Number.isFinite(Number(quote?.price)) ? money.format(Number(quote.price)) : '—';
   const moveText = quote && quote.changePct !== null ? signed(quote.changePct) : '—';
+  const quoteDate = quote?.marketDate ? formatMarketDate(quote.marketDate, { day:'numeric', month:'short' }).toUpperCase() : '';
+  const quotePeriod = quote?.marketDate === todayInIndia() ? 'TODAY' : 'CLOSE';
   return `<article class="story-card">
     <div class="story-marker ${tone}">${icons[tone]}</div>
     <div class="story-content">
@@ -60,7 +72,7 @@ function storyCard(item) {
       ${item.description ? `<p class="story-description">${escapeHtml(item.description)}</p>` : ''}
       <div class="story-analysis ${tone}"><span>${icons[tone]}</span><span>${escapeHtml(item.analysis?.remark || 'No clear directional signal in this headline.')}</span><small>${escapeHtml(item.analysis?.basis || 'Headline signal')}</small></div>
     </div>
-    <div class="story-quote"><span class="quote-label">NSE SNAPSHOT</span><strong>${escapeHtml(price)}</strong><span class="quote-change ${quoteClass}">${escapeHtml(moveText)} <small>TODAY</small></span></div>
+    ${quote ? `<div class="story-quote"><span class="quote-label">NSE SNAPSHOT${quoteDate ? ` · ${escapeHtml(quoteDate)}` : ''}</span><strong>${escapeHtml(price)}</strong><span class="quote-change ${quoteClass}">${escapeHtml(moveText)} <small>${escapeHtml(quotePeriod)}</small></span></div>` : ''}
   </article>`;
 }
 function renderStories() {
@@ -96,16 +108,32 @@ function renderStories() {
 function renderMarket() {
   const payload = state.payload;
   const index = payload?.indices?.[0] || {};
+  const niftySymbols = new Set((payload?.universe || []).map((stock) => stock.symbol));
+  const quotes = (payload?.quotes || []).filter((stock) => niftySymbols.has(stock.symbol) && stock.changePct !== null && stock.changePct !== undefined && Number.isFinite(Number(stock.changePct)));
+  const hasQuotes = quotes.length > 0;
+  const hasIndex = index.value !== null && index.value !== undefined;
+  $('#indexQuoteContent').classList.toggle('hidden', !hasIndex);
+  $('#snapshotBadge').classList.toggle('hidden', !hasIndex && !hasQuotes);
+  $('#marketSection').classList.toggle('hidden', !hasQuotes);
+  $('.movers-card').classList.toggle('hidden', !hasQuotes);
   if (index.value !== null && index.value !== undefined) $('#indexValue').textContent = integer.format(index.value);
   if (index.changePct !== null && index.changePct !== undefined) {
-    const changeLabel = `${signed(index.changePct)} today`;
+    const marketDate = payload?.insights?.marketDate || payload?.data?.marketDate;
+    const isCurrentSession = marketDate === todayInIndia() && payload?.market === 'Market open';
+    const dateText = marketDate ? formatMarketDate(marketDate, { day:'numeric', month:'short' }) : '';
+    const changeLabel = `${signed(index.changePct)} ${isCurrentSession ? 'today' : dateText ? `at close · ${dateText}` : 'at last close'}`;
     $('#indexChange').textContent = changeLabel;
     setTone($('#indexChange'), Number(index.changePct));
+    $('#indexPeriod').textContent = isCurrentSession ? 'TODAY' : dateText ? `CLOSE · ${dateText.toUpperCase()}` : 'LAST CLOSE';
   }
   const quoteTime = payload?.data?.quotesUpdatedAt;
-  $('#indexTimestamp').textContent = quoteTime ? `Snapshot ${when(quoteTime)} · delayed` : 'Waiting for NSE MCP snapshot';
-  const movers = (payload?.quotes || [])
-    .filter((stock) => stock.changePct !== null && stock.changePct !== undefined && Number.isFinite(Number(stock.changePct)))
+  const marketDate = payload?.insights?.marketDate || payload?.data?.marketDate;
+  const currentQuoteDate = marketDate === todayInIndia() && payload?.market === 'Market open';
+  const sourceDate = marketDate ? `${currentQuoteDate ? 'NSE snapshot' : 'Last close'} · ${formatMarketDate(marketDate)}` : '';
+  $('#indexTimestamp').textContent = sourceDate || (quoteTime ? `Snapshot ${when(quoteTime)} · delayed` : 'Waiting for NSE MCP snapshot');
+  $('#marketDateLabel').textContent = sourceDate;
+  $('#marketDateLabel').classList.toggle('hidden', !sourceDate);
+  const movers = quotes
     .sort((a, b) => Number(b.changePct) - Number(a.changePct))
     .slice(0, 4);
   $('#marketGrid').innerHTML = movers.length ? movers.map((stock) => {
@@ -113,8 +141,7 @@ function renderMarket() {
     const tone = value > 0 ? 'up' : value < 0 ? 'down' : 'flat';
     return `<button class="market-tile" type="button" data-symbol="${escapeHtml(stock.symbol)}"><span class="tile-top"><span class="tile-symbol">${escapeHtml(stock.symbol)}</span><span class="tile-arrow">↗</span></span><span class="tile-name">${escapeHtml(stock.name)}</span><span class="tile-bottom"><strong>${Number.isFinite(Number(stock.price)) ? escapeHtml(money.format(Number(stock.price))) : '—'}</strong><span class="quote-change ${tone}">${escapeHtml(signed(value))}</span></span></button>`;
   }).join('') : `<div class="market-empty"><span>⌁</span><strong>${payload?.data?.mcpError ? 'NSE snapshot unavailable' : 'Waiting for NSE MCP data'}</strong><span>Live quote cards appear when the official market snapshot responds.</span></div>`;
-  const bottomFour = (payload?.quotes || [])
-    .filter((stock) => stock.changePct !== null && stock.changePct !== undefined && Number.isFinite(Number(stock.changePct)))
+  const bottomFour = quotes
     .sort((a, b) => Number(a.changePct) - Number(b.changePct))
     .slice(0, 4);
   $('#losersGrid').innerHTML = bottomFour.length ? bottomFour.map((stock) => {
@@ -128,6 +155,42 @@ function renderMarket() {
     const tone = value > 0 ? 'up' : value < 0 ? 'down' : 'flat';
     return `<button class="mover-row" type="button" data-symbol="${escapeHtml(stock.symbol)}"><span class="mover-name"><strong>${escapeHtml(stock.symbol)}</strong><small>${escapeHtml(stock.name)}</small></span><span class="quote-change ${tone}">${escapeHtml(signed(value))}</span></button>`;
   }).join('') : `<div class="rail-empty">Quote data will appear here when NSE MCP is reachable.</div>`;
+}
+function renderInsights() {
+  const insights = state.payload?.insights;
+  const mood = insights?.mood;
+  const score = mood?.score;
+  $('#moodLabel').textContent = mood?.label || 'Not enough headlines';
+  $('#moodScore').textContent = score === null || score === undefined ? '—' : `${score > 0 ? '+' : ''}${score}`;
+  $('#moodScore').classList.remove('up', 'down', 'flat');
+  $('#moodScore').classList.add(score > 0 ? 'up' : score < 0 ? 'down' : 'flat');
+
+  const quoteAvailable = Boolean(insights?.marketDataAvailable);
+  const divergenceSection = $('#divergenceSection');
+  divergenceSection.classList.toggle('hidden', !quoteAvailable);
+  if (quoteAvailable) {
+    const flags = insights.divergences || [];
+    $('#divergenceList').innerHTML = flags.length ? flags.map((item) => {
+      const moveTone = item.movePct > 0 ? 'up' : item.movePct < 0 ? 'down' : 'flat';
+      const link = item.headline?.url && safeUrl(item.headline.url) !== '#'
+        ? `<a class="divergence-headline" href="${escapeHtml(safeUrl(item.headline.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.headline.title)} ↗</a>`
+        : '';
+      return `<article class="divergence-row"><div class="divergence-top"><strong>${escapeHtml(item.symbol)}</strong><span class="divergence-move ${moveTone}">${escapeHtml(signed(item.movePct))}</span></div><span class="divergence-flag">${escapeHtml(item.flag)}</span><div class="divergence-meta">${escapeHtml(item.name)} · ${integer.format(item.headlineCount)} headline${item.headlineCount === 1 ? '' : 's'} · net ${item.netSentiment > 0 ? '+' : ''}${item.netSentiment}</div>${link}</article>`;
+    }).join('') : `<div class="divergence-empty">No divergence flags for today’s headlines.</div>`;
+  }
+
+  const sectorSection = $('#sectorSection');
+  sectorSection.classList.toggle('hidden', !quoteAvailable);
+  if (!quoteAvailable) return;
+  const sectors = insights?.sectors || [];
+  const quotedCount = (insights?.stocks || []).filter((stock) => stock.changePct !== null && stock.changePct !== undefined).length;
+  $('#sectorCoverage').textContent = `${quotedCount} of 50 stocks quoted`;
+  $('#sectorGrid').innerHTML = sectors.map((sector) => {
+    const tone = sector.netSentiment > 0 ? 'positive' : sector.netSentiment < 0 ? 'negative' : 'neutral';
+    const moveTone = sector.averageChangePct > 0 ? 'up' : sector.averageChangePct < 0 ? 'down' : 'flat';
+    const net = `${sector.netSentiment > 0 ? '+' : ''}${sector.netSentiment}`;
+    return `<article class="sector-tile ${tone}"><span class="sector-name">${escapeHtml(sector.name)}</span><strong class="sector-move ${moveTone}">${escapeHtml(signed(sector.averageChangePct))} avg move</strong><div class="sector-meta"><span>Net sentiment</span><strong>${escapeHtml(net)}</strong></div><div class="sector-meta"><span>Stocks</span><strong>${integer.format(sector.stockCount)} · ${integer.format(sector.quotedCount)} quoted</strong></div></article>`;
+  }).join('');
 }
 function renderUniverse() {
   const universe = state.payload?.universe || [];
@@ -144,16 +207,20 @@ function renderUniverse() {
 function renderStatus() {
   const payload = state.payload;
   const data = payload?.data || {};
-  const isAvailable = Boolean(data.mcpTool);
+  const niftySymbols = new Set((payload?.universe || []).map((stock) => stock.symbol));
+  const hasStockQuotes = (payload?.quotes || []).some((quote) => niftySymbols.has(quote.symbol) && quote.changePct !== null && quote.changePct !== undefined);
+  const isAvailable = Boolean(data.mcpTool && hasStockQuotes);
   $('#marketStatus').textContent = state.busy ? 'Refreshing snapshot' : (payload?.market || 'Market status unavailable');
   $('#marketPip').classList.toggle('offline', !isAvailable);
   $('#mcpStatus').textContent = isAvailable ? `NSE MCP / ${data.mcpTool}` : 'NSE MCP / unavailable';
-  $('#mcpFreshness').textContent = isAvailable ? (data.mcpFreshness || `Snapshot ${when(data.quotesUpdatedAt)} · 1–3 min delay`) : 'Could not reach official market data';
+  const quoteIsCurrent = data.marketDate === todayInIndia() && payload?.market === 'Market open';
+  const quoteDate = data.marketDate ? `${quoteIsCurrent ? 'NSE session' : 'Last close'} · ${formatMarketDate(data.marketDate)}` : '';
+  $('#mcpFreshness').textContent = isAvailable ? [quoteDate, data.mcpFreshness || `Snapshot ${when(data.quotesUpdatedAt)} · 1–3 min delay`].filter(Boolean).join(' · ') : 'Could not reach official market data';
   $('#lastUpdated').textContent = data.newsUpdatedAt ? `Last updated ${when(data.newsUpdatedAt)}` : 'Waiting for the first news update';
   if (payload?.data?.errors?.length) $('#lastUpdated').textContent += ` · ${payload.data.errors.length} news source${payload.data.errors.length === 1 ? '' : 's'} unavailable`;
 }
 function render() {
-  renderCounts(); renderStories(); renderMarket(); renderStatus(); renderUniverse();
+  renderCounts(); renderStories(); renderMarket(); renderInsights(); renderStatus(); renderUniverse();
   $('#clearFocus').classList.toggle('hidden', !state.focusSymbol);
 }
 async function loadFeed(force = false) {

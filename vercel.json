@@ -5,6 +5,9 @@
   "functions": {
     "api/feed.mjs": {
       "maxDuration": 60
+    },
+    "api/snapshots.mjs": {
+      "maxDuration": 60
     }
   }
 }
