@@ -1,6 +1,6 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { payload: null, sentiment: 'all', query: '', focusSymbol: '', busy: false, timer: 0 };
+const state = { payload: null, sentiment: 'all', query: '', focusSymbol: '', page: 1, pageSize: 10, busy: false, timer: 0 };
 const icons = { positive: '😊', neutral: '😐', negative: '☹️' };
 const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
 const integer = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
@@ -27,7 +27,7 @@ function setTone(element, value) {
   element.classList.remove('up', 'down', 'flat');
   element.classList.add(value > 0 ? 'up' : value < 0 ? 'down' : 'flat');
 }
-function visibleItems() {
+function matchingItems() {
   const items = state.payload?.items || [];
   const query = state.query.trim().toLocaleLowerCase('en-IN');
   return items.filter((item) => {
@@ -65,7 +65,7 @@ function storyCard(item) {
 }
 function renderStories() {
   const list = $('#storyList');
-  const items = visibleItems();
+  const items = matchingItems();
   list.setAttribute('aria-busy', 'false');
   if (!state.payload) {
     list.innerHTML = `<div class="loading-state"><span class="spinner"></span><strong>Opening the wire</strong><span>Collecting company headlines and the latest NSE snapshot…</span></div>`;
@@ -75,7 +75,23 @@ function renderStories() {
     list.innerHTML = `<div class="empty-state"><span>⌕</span><strong>No matching headlines</strong><p>Try another company or sentiment filter. The feed only includes current NIFTY 50 constituents.</p><button class="text-button" data-clear-search type="button">Clear filters ↗</button></div>`;
     return;
   }
-  list.innerHTML = items.map(storyCard).join('');
+  const pageCount = Math.ceil(items.length / state.pageSize);
+  state.page = Math.min(state.page, pageCount);
+  const first = (state.page - 1) * state.pageSize;
+  const pageItems = items.slice(first, first + state.pageSize);
+  const pageButtons = Array.from({ length:pageCount }, (_, index) => {
+    const page = index + 1;
+    return `<button class="pagination-page${page === state.page ? ' active' : ''}" type="button" data-page="${page}"${page === state.page ? ' aria-current="page"' : ''}>${page}</button>`;
+  }).join('');
+  list.innerHTML = `${pageItems.map(storyCard).join('')}
+    <nav class="story-pagination" aria-label="News pages">
+      <span class="pagination-summary">Showing ${first + 1}–${first + pageItems.length} of ${items.length}</span>
+      <div class="pagination-controls">
+        <button class="pagination-step" type="button" data-page="${state.page - 1}"${state.page === 1 ? ' disabled' : ''}>← Previous</button>
+        <div class="pagination-pages">${pageButtons}</div>
+        <button class="pagination-step" type="button" data-page="${state.page + 1}"${state.page === pageCount ? ' disabled' : ''}>Next →</button>
+      </div>
+    </nav>`;
 }
 function renderMarket() {
   const payload = state.payload;
@@ -139,6 +155,7 @@ async function loadFeed(force = false) {
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || `Feed error ${response.status}`);
     state.payload = result;
+    state.page = 1;
     render();
   } catch (error) {
     $('#storyList').setAttribute('aria-busy', 'false');
@@ -158,6 +175,7 @@ function showToast(message) {
   window.clearTimeout(toastTimer); toastTimer = window.setTimeout(() => toast.classList.remove('visible'), 3200);
 }
 function focusCompany(symbol) {
+  state.page = 1;
   state.focusSymbol = symbol || '';
   if (state.focusSymbol) {
     const company = state.payload?.universe?.find((stock) => stock.symbol === state.focusSymbol);
@@ -173,10 +191,10 @@ function focusCompany(symbol) {
 }
 
 $('#todayLabel').textContent = new Intl.DateTimeFormat('en-IN', { weekday:'short', day:'numeric', month:'short', year:'numeric', timeZone:'Asia/Kolkata' }).format(new Date());
-$('#companySearch').addEventListener('input', (event) => { state.focusSymbol = ''; state.query = event.target.value; renderStories(); $('#clearFocus').classList.add('hidden'); });
+$('#companySearch').addEventListener('input', (event) => { state.focusSymbol = ''; state.page = 1; state.query = event.target.value; renderStories(); $('#clearFocus').classList.add('hidden'); });
 $('#clearFocus').addEventListener('click', () => focusCompany(''));
 $$('.filter-chip').forEach((button) => button.addEventListener('click', () => {
-  state.sentiment = button.dataset.sentiment;
+  state.sentiment = button.dataset.sentiment; state.page = 1;
   $$('.filter-chip').forEach((chip) => chip.classList.toggle('selected', chip === button)); renderStories();
 }));
 $('#refreshButton').addEventListener('click', () => loadFeed(true));
@@ -186,6 +204,13 @@ $('#dialogClose').addEventListener('click', () => $('#universeDialog').close());
 $('#universeSearch').addEventListener('input', renderUniverse);
 $('#universeDialog').addEventListener('click', (event) => { if (event.target === $('#universeDialog')) $('#universeDialog').close(); });
 document.addEventListener('click', (event) => {
+  const pageButton = event.target.closest('[data-page]');
+  if (pageButton && !pageButton.disabled) {
+    state.page = Number(pageButton.dataset.page);
+    renderStories();
+    $('#storyList').scrollIntoView({ behavior:'smooth', block:'start' });
+    return;
+  }
   const stockButton = event.target.closest('[data-symbol]');
   if (stockButton) focusCompany(stockButton.dataset.symbol);
   if (event.target.closest('[data-retry]')) loadFeed(true);

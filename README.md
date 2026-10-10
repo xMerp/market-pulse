@@ -15,7 +15,7 @@ Open [http://localhost:4173](http://localhost:4173). Copy `.env.example` to `.en
 
 ## Market data and NIFTY 50 universe
 
-The backend uses the official NSE CM Market Streamable HTTP MCP endpoint (`https://mcp.nseindia.in/cmmkt/mcp`). At request time, the MCP client discovers the live index market-data tool and requests the NIFTY 50 snapshot. This provides current index and constituent quote fields where the upstream tool returns them. NSE describes the live snapshot as usually 1–3 minutes behind real time. The app labels the data as a snapshot and displays a fallback state if NSE MCP is unreachable; it does not substitute another quote provider.
+The backend uses the official NSE CM Market Streamable HTTP MCP endpoint (`https://mcp.nseindia.in/cmmkt/mcp`). It discovers the live individual-stock quote and index-quote tools, then requests the NIFTY 50 index and its 50 constituent symbols. NSE describes live data as delayed by a few minutes; the dashboard labels it as an NSE snapshot and displays a fallback state if MCP is unreachable. It does not substitute another quote provider.
 
 A bundled 50-company symbol list keeps news matching and the constituent browser scoped to NIFTY 50 when the MCP endpoint is unavailable. Check the current index constituents against NSE before relying on the fallback list for current coverage.
 
