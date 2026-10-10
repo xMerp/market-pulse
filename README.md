@@ -1,39 +1,49 @@
-# Market Pulse — Indian F&O news desk
+# Market Pulse — NIFTY 50 news desk
 
-A small Node.js website for current news about NSE equity F&O companies, headline sentiment, and a quote snapshot beside every story.
+A responsive news dashboard for the current NIFTY 50 companies. It pairs recent company headlines from five Indian financial publishers with a positive, neutral, or negative tone label and an NSE market snapshot. Headlines link to their publisher; quote values include the source and freshness context.
 
 ## Run locally
 
-Requires Node.js 20 or later. There are no npm package dependencies.
+Requires Node.js 20 or later.
 
 ```powershell
-npm start
+npm install
+npm run dev
 ```
 
-Open [http://localhost:4173](http://localhost:4173). The server reads optional settings from `.env` in the project root; use `.env.example` as a starting point.
+Open [http://localhost:4173](http://localhost:4173). Copy `.env.example` to `.env` to configure optional AI sentiment and cache intervals. The MCP market endpoint does not require an API key.
 
-## Live data
+## Market data and NIFTY 50 universe
 
-- The server tries NSE's live **Securities in F&O** snapshot first. If its snapshot endpoint is unavailable, the company universe refreshes from NSE's current [`fo_mktlots.csv` market-lot file](https://nsearchives.nseindia.com/content/fo/fo_mktlots.csv), documented on NSE's [Individual Securities F&O page](https://www.nseindia.com/static/products-services/equity-derivatives-individual-securities).
-- Quotes come from the NSE snapshot when available. Otherwise, the server requests Yahoo Finance chart snapshots for companies in the current headlines. Those quotes can be delayed or unavailable; the UI labels the source beside the value.
-- Headlines are pulled from Google News RSS searches scoped to Moneycontrol, Economic Times, Mint, Business Standard, and Financial Express. Stories are matched against the F&O universe, deduplicated, limited to recent coverage, and link to the original publisher.
-- Feed and quote polling are cached briefly to avoid hammering upstream sources. Use **Refresh feed** to bypass the feed cache.
+The backend uses the official NSE CM Market Streamable HTTP MCP endpoint (`https://mcp.nseindia.in/cmmkt/mcp`). At request time, the MCP client discovers the live index market-data tool and requests the NIFTY 50 snapshot. This provides current index and constituent quote fields where the upstream tool returns them. NSE describes the live snapshot as usually 1–3 minutes behind real time. The app labels the data as a snapshot and displays a fallback state if NSE MCP is unreachable; it does not substitute another quote provider.
 
-Third-party feed and quote endpoints can throttle requests or change their response formats. For guaranteed exchange real-time data in a production deployment, replace the default quote adapter with a licensed NSE data vendor API.
+A bundled 50-company symbol list keeps news matching and the constituent browser scoped to NIFTY 50 when the MCP endpoint is unavailable. Check the current index constituents against NSE before relying on the fallback list for current coverage.
 
-## LLM sentiment
+News search results are fetched from Google News RSS, scoped to Moneycontrol, Economic Times, Mint, Business Standard, and Financial Express. They are matched to NIFTY 50 companies, deduplicated, limited to recent coverage, and linked to the article page. RSS results can be delayed, throttled, or unavailable.
 
-Set `OPENAI_API_KEY` in `.env` to enable company-specific headline analysis through the OpenAI Responses API. The default model is `gpt-5.4-mini`; set `OPENAI_MODEL` to use another model available to your API account. The key is read only by the local server and is never sent to the browser. Headline results are cached in memory by story ID.
+NSE states that MCP data is for informational and educational purposes and is not intended for commercial deployment, investment advice, or real-time trading. Review the [NSE MCP terms and disclaimer](https://www.nseindia.com/nse-mcp) before publishing or using the data. The dashboard's sentiment labels are headline summaries, not forecasts or trading advice.
 
-Without a key, the site uses a small headline phrase matcher and labels each result **Headline signal**. It does not describe that fallback as an LLM analysis. Sentiment summarizes the headline's tone; it is not a price forecast or investment recommendation.
+## Headline sentiment
 
-## Settings
+Set `OPENAI_API_KEY` in the server environment to enable company-specific tone analysis through OpenAI's Responses API. The key stays server-side. Without it, the site uses a small phrase-based headline signal and labels that basis honestly. Set `OPENAI_MODEL` to a model available to your API account.
+
+## Deploy to Vercel
+
+The repository includes Vercel Node functions at `api/feed.mjs` and `api/health.mjs`, with the static site in `public/`.
+
+1. Import the `market-pulse` GitHub repository into Vercel.
+2. Keep the Root Directory at `./`.
+3. Leave the framework preset as Other (or let Vercel detect the project); the static output directory is configured as `public` in `vercel.json`.
+4. Add `OPENAI_API_KEY` and optionally `OPENAI_MODEL`, `NSE_MCP_URL`, `NEWS_REFRESH_SECONDS`, and `QUOTE_REFRESH_SECONDS` under Project Settings → Environment Variables. The NSE MCP URL defaults to the official live endpoint and needs no key.
+5. Deploy. Vercel will rebuild on future pushes to the connected branch.
+
+## Environment variables
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `PORT` | `4173` | Local web server port |
+| `PORT` | `4173` | Local Node server port |
+| `NSE_MCP_URL` | `https://mcp.nseindia.in/cmmkt/mcp` | Official live CM Market MCP endpoint |
 | `NEWS_REFRESH_SECONDS` | `90` | Headline cache duration |
-| `QUOTE_REFRESH_SECONDS` | `60` | NSE quote snapshot cache duration |
-| `OPENAI_API_KEY` | unset | Enables LLM sentiment |
+| `QUOTE_REFRESH_SECONDS` | `60` | NSE snapshot cache duration |
+| `OPENAI_API_KEY` | unset | Enables LLM tone analysis |
 | `OPENAI_MODEL` | `gpt-5.4-mini` | OpenAI Responses API model |
-

@@ -1,316 +1,198 @@
-const state = {
-  items: [],
-  universe: [],
-  filter: 'all',
-  query: '',
-  focusedSymbol: '',
-  response: null,
-  toastTimer: null,
-  loading: false,
-};
-
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const els = {
-  storyList: $('#storyList'), search: $('#companySearch'), refresh: $('#refreshButton'),
-  dialog: $('#universeDialog'), dialogSearch: $('#universeSearch'), dialogList: $('#universeList'),
-  toast: $('#toast'),
-};
-
-const sentimentMeta = {
-  positive: { emoji: '😊', label: 'Positive signal' },
-  neutral: { emoji: '😐', label: 'Neutral read' },
-  negative: { emoji: '☹️', label: 'Negative signal' },
-};
+const state = { payload: null, sentiment: 'all', query: '', focusSymbol: '', busy: false, timer: 0 };
+const icons = { positive: '😊', neutral: '😐', negative: '☹️' };
+const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
+const integer = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 
 function escapeHtml(value = '') {
   return String(value).replace(/[&<>"']/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
 }
-function normalize(value = '') { return String(value).toLocaleLowerCase('en-IN').replace(/[’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim(); }
-function formatInr(value) {
-  if (!Number.isFinite(Number(value))) return '—';
-  return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 }).format(Number(value));
+function safeUrl(value) {
+  try { const url = new URL(value); return url.protocol === 'https:' ? url.href : '#'; } catch { return '#'; }
 }
-function formatPct(value) {
-  if (!Number.isFinite(Number(value))) return '—';
+function signed(value, suffix = '%') {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
   const number = Number(value);
-  return `${number > 0 ? '+' : ''}${number.toFixed(2)}%`;
+  return `${number > 0 ? '+' : ''}${number.toFixed(2)}${suffix}`;
 }
-function timeAgo(value) {
-  if (!value) return 'recent';
-  const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
-  const minutes = Math.floor(elapsed / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+function when(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'Time unavailable';
+  const age = Date.now() - date.getTime();
+  if (age >= 0 && age < 60 * 60 * 1000) return `${Math.max(1, Math.round(age / 60_000))}m ago`;
+  return new Intl.DateTimeFormat('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Asia/Kolkata' }).format(date);
 }
-function formatDate(value) {
-  return new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(value);
+function setTone(element, value) {
+  element.classList.remove('up', 'down', 'flat');
+  element.classList.add(value > 0 ? 'up' : value < 0 ? 'down' : 'flat');
 }
-function shortSource(value) {
-  const key = normalize(value);
-  if (key.includes('moneycontrol')) return 'Moneycontrol';
-  if (key.includes('economic times')) return 'Economic Times';
-  if (key === 'mint' || key.includes('live mint')) return 'Mint';
-  if (key.includes('business standard')) return 'Business Standard';
-  if (key.includes('financial express')) return 'Financial Express';
-  return value || 'Finance desk';
-}
-function sourceInitial(value) {
-  const source = shortSource(value);
-  return source === 'Economic Times' ? 'ET' : source.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase();
-}
-function filteredItems() {
-  const query = normalize(state.query);
-  return state.items.filter((item) => {
-    const sentiment = item.analysis?.sentiment || 'neutral';
-    if (state.filter !== 'all' && sentiment !== state.filter) return false;
-    if (!query) return true;
-    return normalize(`${item.title} ${item.companyName} ${item.symbol} ${item.source}`).includes(query);
+function visibleItems() {
+  const items = state.payload?.items || [];
+  const query = state.query.trim().toLocaleLowerCase('en-IN');
+  return items.filter((item) => {
+    if (state.sentiment !== 'all' && item.analysis?.sentiment !== state.sentiment) return false;
+    if (state.focusSymbol && item.symbol !== state.focusSymbol) return false;
+    return !query || `${item.companyName} ${item.symbol} ${item.title} ${item.source}`.toLocaleLowerCase('en-IN').includes(query);
   });
 }
-function renderStory(item) {
-  const analysis = item.analysis || { sentiment: 'neutral', remark: 'No clear directional signal in the headline.', basis: 'headline signals' };
-  const sentiment = sentimentMeta[analysis.sentiment] ? analysis.sentiment : 'neutral';
-  const meta = sentimentMeta[sentiment];
+function renderCounts() {
+  const counts = state.payload?.counts || {};
+  $('#storyCount').textContent = state.payload ? integer.format(state.payload.items.length) : '—';
+  $('#positiveCount').textContent = integer.format(counts.positive || 0);
+  $('#neutralCount').textContent = integer.format(counts.neutral || 0);
+  $('#negativeCount').textContent = integer.format(counts.negative || 0);
+  $('#allFilterCount').textContent = integer.format(state.payload?.items.length || 0);
+  for (const tone of ['positive','neutral','negative']) $(`#${tone}FilterCount`).textContent = integer.format(counts[tone] || 0);
+}
+function storyCard(item) {
+  const tone = ['positive','neutral','negative'].includes(item.analysis?.sentiment) ? item.analysis.sentiment : 'neutral';
   const quote = item.quote;
-  const change = Number(quote?.changePct);
-  const quotePeriod = state.response?.market === 'Market open' ? 'today' : 'last session';
-  const quoteTrend = !Number.isFinite(change) ? 'flat' : change > 0.005 ? 'up' : change < -0.005 ? 'down' : 'flat';
-  const quoteProvider = quote?.source === 'NSE' ? 'NSE snapshot' : quote?.source === 'Yahoo Finance' ? 'Yahoo · may delay' : '';
-  const publishedDate = item.publishedAt ? new Date(item.publishedAt) : null;
-  const isFresh = publishedDate && (Date.now() - publishedDate.getTime()) < 90 * 60 * 1000;
-  const snippet = (item.description || '').trim();
-  const description = snippet ? `<p class="story-description">${escapeHtml(snippet)}</p>` : '';
-  const quoteMarkup = quote && Number.isFinite(Number(quote.price))
-    ? `<div class="quote-box"><div class="quote-price"><small>₹</small>${formatInr(quote.price)}</div><div class="quote-change ${quoteTrend}">${formatPct(quote.changePct)} ${quotePeriod}</div><span class="quote-source">${escapeHtml(quoteProvider)}</span></div>`
-    : `<div class="quote-box"><span class="quote-unavailable">Quote unavailable</span></div>`;
-  const basis = analysis.basis === 'OpenAI LLM' ? `AI read · ${escapeHtml(state.response?.data?.model || 'OpenAI')}` : 'Headline signal · configure an LLM key for deeper analysis';
+  const move = quote?.changePct;
+  const quoteClass = Number(move) > 0 ? 'up' : Number(move) < 0 ? 'down' : 'flat';
+  const price = Number.isFinite(Number(quote?.price)) ? money.format(Number(quote.price)) : 'Quote unavailable';
+  const moveText = quote && quote.changePct !== null ? signed(quote.changePct) : '—';
   return `<article class="story-card">
-    <div class="story-topline">
-      <div class="story-source"><span class="source-mark">${escapeHtml(sourceInitial(item.source))}</span><span>${escapeHtml(shortSource(item.source))}</span><span class="source-time">· ${timeAgo(item.publishedAt)}</span></div>
-      <div class="story-top-right">${isFresh ? '<span class="fresh-pill">NEW</span>' : ''}</div>
+    <div class="story-marker ${tone}">${icons[tone]}</div>
+    <div class="story-content">
+      <div class="story-meta"><span class="company-chip">${escapeHtml(item.symbol)}</span><span class="company-name">${escapeHtml(item.companyName)}</span><span class="meta-dot">·</span><span>${escapeHtml(item.source)}</span><span class="meta-dot">·</span><time>${escapeHtml(when(item.publishedAt))}</time></div>
+      <a class="story-title" href="${escapeHtml(safeUrl(item.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>
+      ${item.description ? `<p class="story-description">${escapeHtml(item.description)}</p>` : ''}
+      <div class="story-analysis ${tone}"><span>${icons[tone]}</span><span>${escapeHtml(item.analysis?.remark || 'No clear directional signal in this headline.')}</span><small>${escapeHtml(item.analysis?.basis || 'Headline signal')}</small></div>
     </div>
-    <a class="story-company" href="#" data-company-symbol="${escapeHtml(item.symbol)}"><span>${escapeHtml(item.companyName)}</span><span class="company-ticker">${escapeHtml(item.symbol)}</span></a>
-    <a class="story-title" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>
-    ${description}
-    <div class="story-bottom">
-      <div class="analysis ${sentiment}"><span class="analysis-emoji" aria-hidden="true">${meta.emoji}</span><div class="analysis-copy"><span class="analysis-label">${meta.label}</span><p>${escapeHtml(analysis.remark || 'No clear directional signal in the headline.')}</p><small>${basis}</small></div></div>
-      ${quoteMarkup}
-    </div>
+    <div class="story-quote"><span class="quote-label">NSE SNAPSHOT</span><strong>${escapeHtml(price)}</strong><span class="quote-change ${quoteClass}">${escapeHtml(moveText)} <small>TODAY</small></span></div>
   </article>`;
 }
-function renderEmpty(message, detail, icon = '⌁') {
-  els.storyList.innerHTML = `<div class="empty-state"><span class="empty-icon">${icon}</span><strong>${escapeHtml(message)}</strong><span>${escapeHtml(detail)}</span></div>`;
-}
-function renderFeed() {
-  const items = filteredItems();
-  if (state.loading && !state.items.length) {
-    els.storyList.setAttribute('aria-busy', 'true');
-    els.storyList.innerHTML = '<div class="loading-state"><span class="spinner"></span><strong>Finding the latest stories</strong><span>Checking market desks across India…</span></div>';
+function renderStories() {
+  const list = $('#storyList');
+  const items = visibleItems();
+  list.setAttribute('aria-busy', 'false');
+  if (!state.payload) {
+    list.innerHTML = `<div class="loading-state"><span class="spinner"></span><strong>Opening the wire</strong><span>Collecting company headlines and the latest NSE snapshot…</span></div>`;
     return;
   }
-  els.storyList.setAttribute('aria-busy', 'false');
-  if (!state.items.length) {
-    const errors = state.response?.data?.errors || [];
-    const allFailed = errors.length >= 5;
-    renderEmpty(allFailed ? 'News desks are taking a pause' : 'No matching live stories right now', allFailed ? 'Feeds are temporarily unavailable. Use Refresh feed to try again.' : 'No recent F&O company headlines matched this view. Try another company or check back shortly.', allFailed ? '↻' : '◌');
-  } else if (!items.length) {
-    renderEmpty('Nothing in this filter yet', 'Try another sentiment or clear your company search.', '⌕');
-  } else {
-    els.storyList.innerHTML = items.map(renderStory).join('');
+  if (!items.length) {
+    list.innerHTML = `<div class="empty-state"><span>⌕</span><strong>No matching headlines</strong><p>Try another company or sentiment filter. The feed only includes current NIFTY 50 constituents.</p><button class="text-button" data-clear-search type="button">Clear filters ↗</button></div>`;
+    return;
   }
-  updateCounts();
-  updateMovers();
+  list.innerHTML = items.map(storyCard).join('');
 }
-function updateCounts() {
-  const counts = state.response?.counts || { positive: 0, neutral: 0, negative: 0 };
-  const total = state.items.length;
-  $('#storyCount').textContent = String(total).padStart(2, '0');
-  $('#positiveCount').textContent = String(counts.positive).padStart(2, '0');
-  $('#neutralCount').textContent = String(counts.neutral).padStart(2, '0');
-  $('#negativeCount').textContent = String(counts.negative).padStart(2, '0');
-  $('#allFilterCount').textContent = total;
-  $('#positiveFilterCount').textContent = counts.positive;
-  $('#neutralFilterCount').textContent = counts.neutral;
-  $('#negativeFilterCount').textContent = counts.negative;
-}
-function updateMovers() {
-  const distinct = new Map();
-  for (const item of state.items) {
-    if (item.quote && Number.isFinite(Number(item.quote.changePct))) distinct.set(item.symbol, item);
+function renderMarket() {
+  const payload = state.payload;
+  const index = payload?.indices?.[0] || {};
+  if (index.value !== null && index.value !== undefined) $('#indexValue').textContent = integer.format(index.value);
+  if (index.changePct !== null && index.changePct !== undefined) {
+    const changeLabel = `${signed(index.changePct)} today`;
+    $('#indexChange').textContent = changeLabel;
+    setTone($('#indexChange'), Number(index.changePct));
   }
-  const movers = [...distinct.values()].sort((a, b) => Math.abs(Number(b.quote.changePct)) - Math.abs(Number(a.quote.changePct))).slice(0, 5);
-  const root = $('#moversList');
-  root.innerHTML = movers.length ? movers.map((item) => {
-    const pct = Number(item.quote.changePct);
-    const trend = pct > 0.005 ? 'up' : pct < -0.005 ? 'down' : '';
-    return `<button class="mover-row" type="button" data-company-symbol="${escapeHtml(item.symbol)}"><span class="mover-symbol">${escapeHtml(item.symbol)}</span><span class="mover-name">${escapeHtml(item.companyName)}</span><span class="mover-change ${trend}">${formatPct(pct)}</span></button>`;
-  }).join('') : '<div class="movers-empty">No quote snapshots available yet.</div>';
-}
-function setIndices(indices = []) {
-  const nifty = indices.find((index) => index.name === 'NIFTY 50');
-  const bank = indices.find((index) => index.name === 'NIFTY BANK');
-  setIndex('nifty', nifty);
-  setIndex('bank', bank);
-}
-function setIndex(prefix, item) {
-  const value = $(`#${prefix}Value`);
-  const change = $(`#${prefix}Change`);
-  if (!item || !Number.isFinite(Number(item.value))) { value.textContent = '—'; change.textContent = 'Snapshot unavailable'; change.className = 'index-change'; return; }
-  value.textContent = formatInr(item.value);
-  change.textContent = formatPct(item.changePct);
-  change.className = `index-change ${Number(item.changePct) < 0 ? 'down' : ''}`;
+  const quoteTime = payload?.data?.quotesUpdatedAt;
+  $('#indexTimestamp').textContent = quoteTime ? `Snapshot ${when(quoteTime)} · delayed` : 'Waiting for NSE MCP snapshot';
+  const movers = (payload?.movers || []).filter((stock) => stock.changePct !== null && stock.changePct !== undefined).slice(0, 6);
+  $('#marketGrid').innerHTML = movers.length ? movers.slice(0, 4).map((stock) => {
+    const value = Number(stock.changePct);
+    const tone = value > 0 ? 'up' : value < 0 ? 'down' : 'flat';
+    return `<button class="market-tile" type="button" data-symbol="${escapeHtml(stock.symbol)}"><span class="tile-top"><span class="tile-symbol">${escapeHtml(stock.symbol)}</span><span class="tile-arrow">↗</span></span><span class="tile-name">${escapeHtml(stock.name)}</span><span class="tile-bottom"><strong>${Number.isFinite(Number(stock.price)) ? escapeHtml(money.format(Number(stock.price))) : '—'}</strong><span class="quote-change ${tone}">${escapeHtml(signed(value))}</span></span></button>`;
+  }).join('') : `<div class="market-empty"><span>⌁</span><strong>${payload?.data?.mcpError ? 'NSE snapshot unavailable' : 'Waiting for NSE MCP data'}</strong><span>Live quote cards appear when the official market snapshot responds.</span></div>`;
+  const railMovers = (payload?.movers || []).slice(0, 5);
+  $('#moversList').innerHTML = railMovers.length ? railMovers.map((stock) => {
+    const value = Number(stock.changePct || 0);
+    const tone = value > 0 ? 'up' : value < 0 ? 'down' : 'flat';
+    return `<button class="mover-row" type="button" data-symbol="${escapeHtml(stock.symbol)}"><span class="mover-name"><strong>${escapeHtml(stock.symbol)}</strong><small>${escapeHtml(stock.name)}</small></span><span class="quote-change ${tone}">${escapeHtml(signed(value))}</span></button>`;
+  }).join('') : `<div class="rail-empty">Quote data will appear here when NSE MCP is reachable.</div>`;
 }
 function renderUniverse() {
-  const universe = state.universe || [];
-  const query = normalize(els.dialogSearch.value);
-  const filtered = universe.filter((stock) => !query || normalize(`${stock.name} ${stock.symbol}`).includes(query));
-  $('#dialogCount').textContent = `${filtered.length} shown`;
-  els.dialogList.innerHTML = filtered.map((stock) => `<button class="universe-row" type="button" data-company-symbol="${escapeHtml(stock.symbol)}"><span class="universe-row-symbol">${escapeHtml(stock.symbol)}</span><span class="universe-row-name">${escapeHtml(stock.name)}</span><span aria-hidden="true">↗</span></button>`).join('');
+  const universe = state.payload?.universe || [];
+  const query = $('#universeSearch').value.trim().toLocaleLowerCase('en-IN');
+  const matches = universe.filter((stock) => `${stock.symbol} ${stock.name}`.toLocaleLowerCase('en-IN').includes(query));
+  $('#dialogCount').textContent = `${matches.length} of ${universe.length || 50} stocks`;
+  $('#universeList').innerHTML = matches.map((stock) => {
+    const quote = (state.payload?.quotes || []).find((row) => row.symbol === stock.symbol);
+    const change = quote?.changePct;
+    const tone = Number(change) > 0 ? 'up' : Number(change) < 0 ? 'down' : 'flat';
+    return `<button class="universe-row" type="button" data-symbol="${escapeHtml(stock.symbol)}"><span class="universe-symbol">${escapeHtml(stock.symbol)}</span><span class="universe-name">${escapeHtml(stock.name)}</span><span class="universe-price">${quote?.price !== null && quote?.price !== undefined ? escapeHtml(money.format(Number(quote.price))) : '—'}</span><span class="quote-change ${tone}">${change !== null && change !== undefined ? escapeHtml(signed(change)) : '—'}</span><span class="universe-open">↗</span></button>`;
+  }).join('') || `<div class="universe-empty">No matching company. Try its NSE symbol.</div>`;
 }
-function renderQuickCompanies() {
-  const root = $('#quickCompanies');
-  const featuredSymbols = ['RELIANCE','HDFCBANK','ICICIBANK','INFY','TCS','SBIN','BHARTIARTL','LT'];
-  const bySymbol = new Map(state.universe.map((stock) => [stock.symbol, stock]));
-  const companies = featuredSymbols.map((symbol) => bySymbol.get(symbol)).filter(Boolean);
-  const expanded = state.universe.filter((stock) => !featuredSymbols.includes(stock.symbol)).slice(0, Math.max(0, 8 - companies.length));
-  const display = [...companies, ...expanded].slice(0, 8);
-  root.innerHTML = display.map((stock) => `<button class="quick-company ${state.focusedSymbol === stock.symbol ? 'is-active' : ''}" type="button" data-company-symbol="${escapeHtml(stock.symbol)}"><span class="quick-symbol">${escapeHtml(stock.symbol)}</span><span class="quick-name">${escapeHtml(stock.name)}</span></button>`).join('');
+function renderStatus() {
+  const payload = state.payload;
+  const data = payload?.data || {};
+  const isAvailable = Boolean(data.mcpTool);
+  $('#marketStatus').textContent = state.busy ? 'Refreshing snapshot' : (payload?.market || 'Market status unavailable');
+  $('#marketPip').classList.toggle('offline', !isAvailable);
+  $('#mcpStatus').textContent = isAvailable ? `NSE MCP / ${data.mcpTool}` : 'NSE MCP / unavailable';
+  $('#mcpFreshness').textContent = isAvailable ? (data.mcpFreshness || `Snapshot ${when(data.quotesUpdatedAt)} · 1–3 min delay`) : 'Could not reach official market data';
+  $('#lastUpdated').textContent = data.newsUpdatedAt ? `Last updated ${when(data.newsUpdatedAt)}` : 'Waiting for the first news update';
+  if (payload?.data?.errors?.length) $('#lastUpdated').textContent += ` · ${payload.data.errors.length} news source${payload.data.errors.length === 1 ? '' : 's'} unavailable`;
 }
-function setServerMetadata(data) {
-  const response = state.response;
-  const sourceName = response?.data?.quoteSource || 'Live quote feed';
-  const universeSource = response?.universeSource || '';
-  const universeSourceLabel = universeSource === 'NSE live' ? 'NSE SNAPSHOT' : universeSource === 'NSE market-lot file' ? 'NSE CONTRACT FILE' : 'LOCAL FALLBACK';
-  $('#universeLabel').textContent = `${(response?.universeCount || 0).toLocaleString('en-IN')} F&O COMPANIES · ${universeSourceLabel}`;
-  $('#navUniverseCount').textContent = (response?.universeCount || 0).toLocaleString('en-IN');
-  $('#dialogUniverseCount').textContent = `${(response?.universeCount || 0).toLocaleString('en-IN')} listed companies available to scan.`;
-  $('#universeSourceNote').textContent = response?.universeSource || 'Exchange constituent list';
-  $('#sideSession').textContent = response?.market || 'Market status unavailable';
-  $('#marketStatus').textContent = response?.market || 'Market status unavailable';
-  $('#marketPip').classList.toggle('closed', response?.market !== 'Market open');
-  $('#sideSessionDot').style.background = response?.market === 'Market open' ? '#85d998' : '#9ba99e';
-  $('#footerProvider').textContent = `${sourceName} · sentiment: ${response?.data?.sentimentMode || 'headline signals'}`;
-  const updated = response?.data?.newsUpdatedAt ? new Date(response.data.newsUpdatedAt) : null;
-  const allFeedsFailed = (response?.data?.errors || []).length >= 5;
-  $('#lastUpdated').textContent = allFeedsFailed ? 'News feeds unavailable' : updated ? `Synced ${timeAgo(updated.toISOString())}` : 'Waiting for first sync';
-  $('#indexUpdated').textContent = response?.data?.quoteSource === 'NSE' ? 'NSE SNAPSHOT' : 'QUOTE SNAPSHOT';
-  const focused = state.universe.find((stock) => stock.symbol === state.focusedSymbol);
-  $('#focusedLabel').textContent = focused ? `· ${focused.name}` : '';
-  $('#clearFocus').classList.toggle('hidden', !focused);
-  document.title = focused ? `${focused.symbol} News — Market Pulse` : 'Market Pulse — Indian F&O News';
+function render() {
+  renderCounts(); renderStories(); renderMarket(); renderStatus(); renderUniverse();
+  $('#clearFocus').classList.toggle('hidden', !state.focusSymbol);
 }
-function setOverview(response) {
-  state.response = response;
-  state.items = response.items || [];
-  state.universe = response.universe || [];
-  setServerMetadata(response.data);
-  setIndices(response.indices || []);
-  renderQuickCompanies();
-  renderUniverse();
-  renderFeed();
-}
-async function loadFeed({ force = false, symbol = state.focusedSymbol } = {}) {
-  if (state.loading) return;
-  state.loading = true;
-  if (els.refresh) els.refresh.disabled = true;
-  if (!state.items.length) renderFeed();
-  const params = new URLSearchParams();
-  if (symbol) params.set('symbol', symbol);
-  if (force) params.set('refresh', '1');
+async function loadFeed(force = false) {
+  if (state.busy) return;
+  state.busy = true;
+  $('#refreshButton').classList.add('loading');
+  $('#storyList').setAttribute('aria-busy', 'true');
+  renderStatus();
   try {
-    const response = await fetch(`/api/feed${params.size ? `?${params}` : ''}`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || payload.error || `Feed unavailable (${response.status})`);
-    setOverview(payload);
-    if (payload.data?.errors?.length) {
-      const active = payload.data.errors.length;
-      const failed = payload.data.errors.map((error) => error.source).join(', ');
-      showToast(`${active} news source${active === 1 ? '' : 's'} unavailable: ${failed}`);
-    }
+    const response = await fetch(`/api/feed${force ? '?refresh=1' : ''}`, { headers:{ Accept:'application/json' }, cache:'no-store' });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `Feed error ${response.status}`);
+    state.payload = result;
+    render();
   } catch (error) {
-    if (!state.items.length) renderEmpty('Could not connect to the live feed', 'Make sure the local server is running and try refreshing.', '↻');
-    showToast(error.message || 'The live feed is unavailable.');
+    $('#storyList').setAttribute('aria-busy', 'false');
+    $('#storyList').innerHTML = `<div class="error-state"><span>!</span><strong>The feed could not be refreshed</strong><p>${escapeHtml(error.message)}</p><button class="retry-button" type="button" data-retry>Try again</button></div>`;
+    showToast('Could not reach the feed. Try again in a moment.');
   } finally {
-    state.loading = false;
-    if (els.refresh) els.refresh.disabled = false;
+    state.busy = false;
+    $('#refreshButton').classList.remove('loading');
+    renderStatus();
+    window.clearTimeout(state.timer);
+    state.timer = window.setTimeout(() => loadFeed(false), Math.max(45, Number(state.payload?.data?.refreshSeconds || 90)) * 1000);
   }
 }
+let toastTimer;
 function showToast(message) {
-  clearTimeout(state.toastTimer);
-  els.toast.textContent = message;
-  els.toast.classList.add('show');
-  state.toastTimer = setTimeout(() => els.toast.classList.remove('show'), 4200);
+  const toast = $('#toast'); toast.textContent = message; toast.classList.add('visible');
+  window.clearTimeout(toastTimer); toastTimer = window.setTimeout(() => toast.classList.remove('visible'), 3200);
 }
 function focusCompany(symbol) {
-  const stock = state.universe.find((company) => company.symbol === symbol);
-  if (!stock) return;
-  state.focusedSymbol = stock.symbol;
-  state.filter = 'all';
-  state.query = '';
-  els.search.value = '';
-  $$('.filter-chip').forEach((chip) => chip.classList.toggle('selected', chip.dataset.sentiment === 'all'));
-  $('#universeDialog').close();
-  $('#quickCompanies').querySelectorAll('.quick-company').forEach((button) => button.classList.toggle('is-active', button.dataset.companySymbol === stock.symbol));
-  els.storyList.innerHTML = '<div class="loading-state"><span class="spinner"></span><strong>Scanning for company headlines</strong><span>Opening the latest news for ' + escapeHtml(stock.name) + '…</span></div>';
-  state.items = [];
-  state.response = null;
-  updateCounts();
-  loadFeed({ symbol: stock.symbol });
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-function clearCompany() {
-  state.focusedSymbol = '';
-  state.query = '';
-  els.search.value = '';
-  loadFeed({ symbol: '' });
-}
-function openUniverse() {
-  if (typeof els.dialog.showModal === 'function') els.dialog.showModal();
-  els.dialogSearch.value = '';
-  renderUniverse();
-  setTimeout(() => els.dialogSearch.focus(), 30);
+  state.focusSymbol = symbol || '';
+  if (state.focusSymbol) {
+    const company = state.payload?.universe?.find((stock) => stock.symbol === state.focusSymbol);
+    $('#companySearch').value = company?.name || state.focusSymbol;
+    state.query = '';
+  } else {
+    $('#companySearch').value = '';
+    state.query = '';
+  }
+  if ($('#universeDialog').open) $('#universeDialog').close();
+  renderStories(); $('#clearFocus').classList.toggle('hidden', !state.focusSymbol);
+  $('#feed').scrollIntoView({ behavior:'smooth', block:'start' });
 }
 
-$('#todayLabel').textContent = formatDate(new Date());
-$('#todayLabel').dateTime = new Date().toISOString();
-$('#feedNav').addEventListener('click', clearCompany);
-$('#universeNav').addEventListener('click', openUniverse);
-$('#viewAllButton').addEventListener('click', openUniverse);
-$('#moversAllButton').addEventListener('click', openUniverse);
-$('#refreshButton').addEventListener('click', () => loadFeed({ force: true }));
-$('#dialogClose').addEventListener('click', () => els.dialog.close());
-$('#clearFocus').addEventListener('click', clearCompany);
-$('#mobileMenu').addEventListener('click', () => $('#sidebar').classList.toggle('mobile-open'));
-$$('.filter-chip').forEach((chip) => chip.addEventListener('click', () => {
-  state.filter = chip.dataset.sentiment;
-  $$('.filter-chip').forEach((item) => item.classList.toggle('selected', item === chip));
-  renderFeed();
+$('#todayLabel').textContent = new Intl.DateTimeFormat('en-IN', { weekday:'short', day:'numeric', month:'short', year:'numeric', timeZone:'Asia/Kolkata' }).format(new Date());
+$('#companySearch').addEventListener('input', (event) => { state.focusSymbol = ''; state.query = event.target.value; renderStories(); $('#clearFocus').classList.add('hidden'); });
+$('#clearFocus').addEventListener('click', () => focusCompany(''));
+$$('.filter-chip').forEach((button) => button.addEventListener('click', () => {
+  state.sentiment = button.dataset.sentiment;
+  $$('.filter-chip').forEach((chip) => chip.classList.toggle('selected', chip === button)); renderStories();
 }));
-els.search.addEventListener('input', () => { state.query = els.search.value; renderFeed(); });
-els.search.addEventListener('keydown', (event) => {
-  if (event.key !== 'Enter') return;
-  const query = normalize(els.search.value);
-  const exact = state.universe.find((stock) => normalize(stock.symbol) === query || normalize(stock.name) === query);
-  if (exact) focusCompany(exact.symbol);
-});
-els.dialogSearch.addEventListener('input', renderUniverse);
+$('#refreshButton').addEventListener('click', () => loadFeed(true));
+$('#universeButton').addEventListener('click', () => { $('#universeDialog').showModal(); renderUniverse(); $('#universeSearch').focus(); });
+$('#moversAllButton').addEventListener('click', () => { $('#universeDialog').showModal(); renderUniverse(); });
+$('#dialogClose').addEventListener('click', () => $('#universeDialog').close());
+$('#universeSearch').addEventListener('input', renderUniverse);
+$('#universeDialog').addEventListener('click', (event) => { if (event.target === $('#universeDialog')) $('#universeDialog').close(); });
 document.addEventListener('click', (event) => {
-  const target = event.target.closest('[data-company-symbol]');
-  if (target) { event.preventDefault(); focusCompany(target.dataset.companySymbol); }
-  if (event.target === els.dialog) els.dialog.close();
+  const stockButton = event.target.closest('[data-symbol]');
+  if (stockButton) focusCompany(stockButton.dataset.symbol);
+  if (event.target.closest('[data-retry]')) loadFeed(true);
+  if (event.target.closest('[data-clear-search]')) { state.sentiment = 'all'; $$('.filter-chip').forEach((chip) => chip.classList.toggle('selected', chip.dataset.sentiment === 'all')); focusCompany(''); }
 });
 document.addEventListener('keydown', (event) => {
-  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-    event.preventDefault();
-    els.search.focus();
-  }
-  if (event.key === 'Escape') $('#sidebar').classList.remove('mobile-open');
+  if (event.key === '/' && !['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) { event.preventDefault(); $('#companySearch').focus(); }
+  if (event.key.toLowerCase() === 'r' && !event.ctrlKey && !event.metaKey && !['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) loadFeed(true);
 });
-
 loadFeed();
-setInterval(() => loadFeed(), 60_000);
