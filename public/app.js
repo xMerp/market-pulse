@@ -1,6 +1,7 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { payload: null, sentiment: 'all', query: '', focusSymbol: '', page: 1, pageSize: 10, busy: false, timer: 0 };
+const state = { payload: null, sentiment: 'all', query: '', focusSymbol: '', page: 1, pageSize: 10, busy: false, timer: 0, marketRetryAttempt: 0, marketRetrying: false };
+const marketRetryDelays = [8_000, 15_000, 30_000, 60_000];
 const icons = { positive: '😊', neutral: '😐', negative: '☹️' };
 const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
 const integer = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
@@ -20,6 +21,12 @@ function todayInIndia() {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone:'Asia/Kolkata', year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(new Date());
   const part = (type) => parts.find((entry) => entry.type === type)?.value || '';
   return `${part('year')}-${part('month')}-${part('day')}`;
+}
+function hasHealthyMarketData(payload = state.payload) {
+  const symbols = new Set((payload?.universe || []).map((stock) => stock.symbol));
+  const usableQuotes = (payload?.quotes || []).filter((quote) => symbols.has(quote.symbol)
+    && quote.changePct !== null && quote.changePct !== undefined && Number.isFinite(Number(quote.changePct)));
+  return Boolean(payload?.data?.mcpTool) && usableQuotes.length >= 45;
 }
 function signed(value, suffix = '%') {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
@@ -208,14 +215,13 @@ function renderStatus() {
   const payload = state.payload;
   const data = payload?.data || {};
   const niftySymbols = new Set((payload?.universe || []).map((stock) => stock.symbol));
-  const hasStockQuotes = (payload?.quotes || []).some((quote) => niftySymbols.has(quote.symbol) && quote.changePct !== null && quote.changePct !== undefined);
-  const isAvailable = Boolean(data.mcpTool && hasStockQuotes);
+  const isAvailable = hasHealthyMarketData(payload);
   $('#marketStatus').textContent = state.busy ? 'Refreshing snapshot' : (payload?.market || 'Market status unavailable');
   $('#marketPip').classList.toggle('offline', !isAvailable);
-  $('#mcpStatus').textContent = isAvailable ? `NSE MCP / ${data.mcpTool}` : 'NSE MCP / unavailable';
+  $('#mcpStatus').textContent = isAvailable ? `NSE MCP / ${data.mcpTool}` : state.marketRetrying ? 'NSE MCP / reconnecting' : 'NSE MCP / unavailable';
   const quoteIsCurrent = data.marketDate === todayInIndia() && payload?.market === 'Market open';
   const quoteDate = data.marketDate ? `${quoteIsCurrent ? 'NSE session' : 'Last close'} · ${formatMarketDate(data.marketDate)}` : '';
-  $('#mcpFreshness').textContent = isAvailable ? [quoteDate, data.mcpFreshness || `Snapshot ${when(data.quotesUpdatedAt)} · 1–3 min delay`].filter(Boolean).join(' · ') : 'Could not reach official market data';
+  $('#mcpFreshness').textContent = isAvailable ? [quoteDate, data.mcpFreshness || `Snapshot ${when(data.quotesUpdatedAt)} · 1–3 min delay`].filter(Boolean).join(' · ') : state.marketRetrying ? 'Retrying official market data automatically' : 'Could not reach official market data';
   $('#lastUpdated').textContent = data.newsUpdatedAt ? `Last updated ${when(data.newsUpdatedAt)}` : 'Waiting for the first news update';
   if (payload?.data?.errors?.length) $('#lastUpdated').textContent += ` · ${payload.data.errors.length} news source${payload.data.errors.length === 1 ? '' : 's'} unavailable`;
 }
@@ -225,6 +231,7 @@ function render() {
 }
 async function loadFeed(force = false) {
   if (state.busy) return;
+  if (force) state.marketRetryAttempt = 0;
   state.busy = true;
   $('#refreshButton').classList.add('loading');
   $('#storyList').setAttribute('aria-busy', 'true');
@@ -234,18 +241,28 @@ async function loadFeed(force = false) {
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || `Feed error ${response.status}`);
     state.payload = result;
+    state.marketRetrying = !hasHealthyMarketData(result);
+    if (!state.marketRetrying) state.marketRetryAttempt = 0;
     state.page = 1;
     render();
   } catch (error) {
+    state.marketRetrying = true;
     $('#storyList').setAttribute('aria-busy', 'false');
     $('#storyList').innerHTML = `<div class="error-state"><span>!</span><strong>The feed could not be refreshed</strong><p>${escapeHtml(error.message)}</p><button class="retry-button" type="button" data-retry>Try again</button></div>`;
-    showToast('Could not reach the feed. Try again in a moment.');
+    if (force) showToast('Could not reach the feed. It will retry automatically.');
   } finally {
     state.busy = false;
     $('#refreshButton').classList.remove('loading');
     renderStatus();
     window.clearTimeout(state.timer);
-    state.timer = window.setTimeout(() => loadFeed(false), Math.max(45, Number(state.payload?.data?.refreshSeconds || 90)) * 1000);
+    if (state.marketRetrying || !hasHealthyMarketData(state.payload)) {
+      const delay = marketRetryDelays[Math.min(state.marketRetryAttempt, marketRetryDelays.length - 1)];
+      state.marketRetryAttempt += 1;
+      state.timer = window.setTimeout(() => loadFeed(false), delay);
+    } else {
+      state.marketRetryAttempt = 0;
+      state.timer = window.setTimeout(() => loadFeed(false), Math.max(45, Number(state.payload?.data?.refreshSeconds || 90)) * 1000);
+    }
   }
 }
 let toastTimer;
