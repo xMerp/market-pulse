@@ -15,7 +15,7 @@ Open [http://localhost:4173](http://localhost:4173). Copy `.env.example` to `.en
 
 ## Market data and NIFTY 50 universe
 
-The backend connects to NSE's official CM Market Streamable HTTP MCP endpoint (`https://mcp.nseindia.in/cmmkt/mcp`), discovers its quote tools, and fetches the NIFTY 50 index plus the 50 constituent quotes. NSE's MCP page describes the live data as delayed by a few minutes; the page shows its freshness status and quote errors. A bundled 50-company list keeps news matching scoped to NIFTY 50 when MCP is temporarily unavailable.
+The backend races NSE's official CM Market Streamable HTTP MCP endpoint (`https://mcp.nseindia.in/cmmkt/mcp`) against the bulk snapshot used by NSE's own live-equity page. It accepts the first source that returns the index and at least 45 usable constituent quotes, and aborts the slower request. This keeps the page responsive during MCP timeouts while retaining MCP as a live source when it responds. A bundled 50-company list keeps news matching scoped to NIFTY 50 if both NSE sources are unavailable.
 
 News searches use Google News RSS, scoped to Moneycontrol, Economic Times, Mint, Business Standard, and Financial Express. Results are matched to NIFTY 50 companies, deduplicated, limited to recent coverage, and linked to the article page. RSS results can be delayed or throttled.
 

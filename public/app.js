@@ -26,7 +26,7 @@ function hasHealthyMarketData(payload = state.payload) {
   const symbols = new Set((payload?.universe || []).map((stock) => stock.symbol));
   const usableQuotes = (payload?.quotes || []).filter((quote) => symbols.has(quote.symbol)
     && quote.changePct !== null && quote.changePct !== undefined && Number.isFinite(Number(quote.changePct)));
-  return Boolean(payload?.data?.mcpTool) && usableQuotes.length >= 45;
+  return Boolean(payload?.data?.marketProvider || payload?.data?.mcpTool) && usableQuotes.length >= 45;
 }
 function signed(value, suffix = '%') {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
@@ -214,11 +214,13 @@ function renderUniverse() {
 function renderStatus() {
   const payload = state.payload;
   const data = payload?.data || {};
-  const niftySymbols = new Set((payload?.universe || []).map((stock) => stock.symbol));
   const isAvailable = hasHealthyMarketData(payload);
+  const provider = data.marketProvider || (data.mcpTool ? 'NSE MCP' : '');
   $('#marketStatus').textContent = state.busy ? 'Refreshing snapshot' : (payload?.market || 'Market status unavailable');
   $('#marketPip').classList.toggle('offline', !isAvailable);
-  $('#mcpStatus').textContent = isAvailable ? `NSE MCP / ${data.mcpTool}` : state.marketRetrying ? 'NSE MCP / reconnecting' : 'NSE MCP / unavailable';
+  $('#mcpStatus').textContent = isAvailable
+    ? (provider === 'NSE MCP' ? `NSE MCP / ${data.mcpTool || 'live snapshot'}` : 'NSE / official live-market backup')
+    : state.marketRetrying ? 'NSE / reconnecting' : 'NSE / unavailable';
   const quoteIsCurrent = data.marketDate === todayInIndia() && payload?.market === 'Market open';
   const quoteDate = data.marketDate ? `${quoteIsCurrent ? 'NSE session' : 'Last close'} · ${formatMarketDate(data.marketDate)}` : '';
   $('#mcpFreshness').textContent = isAvailable ? [quoteDate, data.mcpFreshness || `Snapshot ${when(data.quotesUpdatedAt)} · 1–3 min delay`].filter(Boolean).join(' · ') : state.marketRetrying ? 'Retrying official market data automatically' : 'Could not reach official market data';
