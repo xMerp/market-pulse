@@ -17,7 +17,7 @@ export default async function handler(request, response) {
     const forcedRefresh = url.searchParams.get('refresh') === '1';
     const payload = await buildFeed(url.searchParams.get('symbol') || '', forcedRefresh);
     const hasHealthyQuotes = Number(payload?.data?.quoteCount) >= 45;
-    const cache = !forcedRefresh && hasHealthyQuotes ? 'public, s-maxage=30, stale-while-revalidate=60' : 'no-store';
+    const cache = !forcedRefresh && hasHealthyQuotes ? 'public, s-maxage=60, stale-while-revalidate=120' : 'no-store';
     return json(response, 200, payload, cache);
   } catch (error) {
     console.error(`[feed] ${error.stack || error}`);

@@ -71,7 +71,7 @@ function storyCard(item) {
   const moveText = quote && quote.changePct !== null ? signed(quote.changePct) : '—';
   const quoteDate = quote?.marketDate ? formatMarketDate(quote.marketDate, { day:'numeric', month:'short' }).toUpperCase() : '';
   const quotePeriod = quote?.marketDate === todayInIndia() ? 'TODAY' : 'CLOSE';
-  const quoteSource = quote?.source === 'Upstox' ? 'UPSTOX SNAPSHOT' : quote?.source === 'NSE MCP' ? 'NSE MCP SNAPSHOT' : 'NSE SNAPSHOT';
+  const quoteSource = quote?.source === 'Groww' ? 'GROWW SNAPSHOT' : quote?.source === 'NSE MCP' ? 'NSE MCP SNAPSHOT' : 'NSE SNAPSHOT';
   return `<article class="story-card">
     <div class="story-marker ${tone}">${icons[tone]}</div>
     <div class="story-content">
@@ -140,7 +140,7 @@ function renderMarket() {
   const sourceDate = marketDate ? `${currentQuoteDate ? 'Market snapshot' : 'Last close'} · ${formatMarketDate(marketDate)}` : '';
   $('#indexTimestamp').textContent = sourceDate || (quoteTime ? `Snapshot ${when(quoteTime)} · ${payload?.data?.quoteDelay || 'delayed'}` : 'Waiting for market snapshot');
   const provider = payload?.data?.marketProvider;
-  $('#snapshotBadge').innerHTML = `<i></i> ${provider === 'Upstox' ? 'UPSTOX QUOTES' : 'MARKET SNAPSHOT'}`;
+  $('#snapshotBadge').innerHTML = `<i></i> ${provider === 'Groww' ? 'GROWW QUOTES' : 'MARKET SNAPSHOT'}`;
   $('#marketDateLabel').textContent = sourceDate;
   $('#marketDateLabel').classList.toggle('hidden', !sourceDate);
   const movers = quotes
@@ -221,21 +221,21 @@ function renderStatus() {
   const provider = data.marketProvider || (data.mcpTool ? 'NSE MCP' : '');
   $('#marketStatus').textContent = state.busy ? 'Refreshing snapshot' : (payload?.market || 'Market status unavailable');
   $('#marketPip').classList.toggle('offline', !isAvailable);
-  const providerLabel = provider === 'Upstox' ? 'UPSTOX / FULL MARKET QUOTES'
+  const providerLabel = provider === 'Groww' ? 'GROWW / LIVE QUOTES'
     : provider === 'NSE MCP' ? 'NSE MCP / BACKUP'
       : provider === 'NSE live-equity page' ? 'NSE / LIVE-MARKET BACKUP' : '';
   $('#marketDataStatus').textContent = isAvailable ? providerLabel
     : state.marketRetrying ? 'MARKET DATA / RECONNECTING'
-      : data.upstoxConfigured ? 'UPSTOX / UNAVAILABLE' : 'UPSTOX / TOKEN NEEDED';
+      : data.growwConfigured ? 'GROWW / UNAVAILABLE' : 'GROWW / TOKEN NEEDED';
   const quoteIsCurrent = data.marketDate === todayInIndia() && payload?.market === 'Market open';
   const quoteDate = data.marketDate ? `${quoteIsCurrent ? 'NSE session' : 'Last close'} · ${formatMarketDate(data.marketDate)}` : '';
-  const sourceNote = data.providerWarning && provider !== 'Upstox'
-    ? data.upstoxConfigured ? 'Upstox unavailable; showing NSE backup' : 'Add UPSTOX_ACCESS_TOKEN in Vercel to enable Upstox'
+  const sourceNote = data.providerWarning && provider !== 'Groww'
+    ? data.growwConfigured ? 'Groww unavailable; showing NSE backup' : 'Add GROWW_ACCESS_TOKEN in Vercel to enable Groww'
     : '';
   $('#marketDataFreshness').textContent = isAvailable
     ? [quoteDate, data.mcpFreshness || `Snapshot ${when(data.quotesUpdatedAt)} · ${data.quoteDelay || 'delayed'}`, sourceNote].filter(Boolean).join(' · ')
     : state.marketRetrying ? 'Retrying the configured quote provider automatically'
-      : data.upstoxConfigured ? 'Could not reach Upstox or its fallback sources' : 'Add UPSTOX_ACCESS_TOKEN in Vercel, then redeploy';
+      : data.growwConfigured ? 'Could not reach Groww or its fallback sources' : 'Add GROWW_ACCESS_TOKEN in Vercel, then redeploy';
   $('#lastUpdated').textContent = data.newsUpdatedAt ? `Last updated ${when(data.newsUpdatedAt)}` : 'Waiting for the first news update';
   if (payload?.data?.errors?.length) $('#lastUpdated').textContent += ` · ${payload.data.errors.length} news source${payload.data.errors.length === 1 ? '' : 's'} unavailable`;
 }

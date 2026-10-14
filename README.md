@@ -11,15 +11,15 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:4173](http://localhost:4173). Copy `.env.example` to `.env` to configure Gemini sentiment, the Upstox quote token, and cache intervals. If Upstox is not configured, the app attempts the NSE sources as a best-effort fallback.
+Open [http://localhost:4173](http://localhost:4173). Copy `.env.example` to `.env` to configure Gemini sentiment, the Groww quote token, and cache intervals. If Groww is not configured, the app attempts the NSE sources as a best-effort fallback.
 
 ## Market data and NIFTY 50 universe
 
-When `UPSTOX_ACCESS_TOKEN` is set, the backend uses Upstox's Full Market Quotes V3 endpoint as the primary source for all 50 stocks and the NIFTY 50 index. It resolves NSE equity instrument keys through Upstox's instrument-search API and caches them in the warm server process for 24 hours. The single quote request supports up to 500 instruments. If Upstox is not configured or its request fails, the backend falls back to NSE's public CM Market MCP endpoint and the bulk snapshot used by NSE's live-equity page. A bundled 50-company list keeps news matching scoped to NIFTY 50 when quotes are unavailable.
+When `GROWW_ACCESS_TOKEN` is set, the backend uses Groww's Get Quote endpoint for the 50 NIFTY 50 stocks and the NIFTY 50 index. Each quote includes the last price and day percentage change. Groww documents a limit of 10 live-data requests per second and 300 per minute; the backend requests up to nine quotes at a time with a pause between batches, and successful feed responses are edge-cached for 60 seconds. A full refresh therefore makes 51 Groww requests. If Groww is not configured or its request fails, the backend falls back to NSE's public CM Market MCP endpoint and the bulk snapshot used by NSE's live-equity page. A bundled 50-company list keeps news matching scoped to NIFTY 50 when quotes are unavailable.
 
-Upstox's read-only Analytics Token can be generated in the Upstox Developer Apps page and supports market-data APIs from serverless functions. Store it as `UPSTOX_ACCESS_TOKEN` in Vercel Project Settings → Environment Variables for Production (and Preview/Development if needed), then redeploy. Keep it server-side: do not add a `NEXT_PUBLIC_` prefix, put the token in browser code, or commit a populated `.env` file. Review the market-data provider's terms before publicly redistributing quotes.
+Generate a Groww API access token from Groww → Profile → Settings → Trading APIs → Generate API keys → Access Token. Groww states that access tokens expire daily at 6:00 AM, so replace the token in Vercel after generating a new one and redeploy if the environment value changes. Store it as `GROWW_ACCESS_TOKEN` in Vercel Project Settings → Environment Variables for Production (and Preview/Development if needed). Keep it server-side: do not add a `NEXT_PUBLIC_` prefix, put the token in browser code, or commit a populated `.env` file. Review the market-data provider's terms before publicly redistributing quotes.
 
-Upstox documentation: [Full Market Quotes V3](https://upstox.com/developer/api-documentation/get-full-market-quote-v3/), [Instrument Search](https://upstox.com/developer/api-documentation/instrument-search/), and [Analytics Token](https://upstox.com/developer/api-documentation/analytics-token/).
+Groww documentation: [Live Data API](https://groww.in/trade-api/docs/curl/live-data) and [authentication and token generation](https://groww.in/trade-api/docs/curl).
 
 News searches use Google News RSS, scoped to Moneycontrol, Economic Times, Mint, Business Standard, and Financial Express. Results are matched to NIFTY 50 companies, deduplicated, limited to recent coverage, and linked to the article page. RSS results can be delayed or throttled.
 
@@ -35,7 +35,7 @@ The repository includes Vercel Node functions at `api/feed.mjs`, `api/health.mjs
 
 1. Import the `market-pulse` GitHub repository into Vercel.
 2. Keep Root Directory at `./` and the framework preset as Other. `vercel.json` sets the static output directory to `public`.
-3. Under Project Settings → Environment Variables, add `UPSTOX_ACCESS_TOKEN` with your Upstox Analytics Token and select Production. Add it to Preview/Development only if you want quotes there too. Optionally set `GEMINI_API_KEY`, `GEMINI_MODEL`, `NSE_MCP_URL`, `NEWS_REFRESH_SECONDS`, and `QUOTE_REFRESH_SECONDS`.
+3. Under Project Settings → Environment Variables, add `GROWW_ACCESS_TOKEN` with your Groww access token and select Production. Add it to Preview/Development only if you want quotes there too. Groww tokens expire daily at 6:00 AM, so refresh the Vercel value regularly. Optionally set `GEMINI_API_KEY`, `GEMINI_MODEL`, `NSE_MCP_URL`, `NEWS_REFRESH_SECONDS`, and `QUOTE_REFRESH_SECONDS`.
 4. In the Vercel project Storage tab, create a **private Blob store** and connect it to this project. Vercel supplies `BLOB_READ_WRITE_TOKEN` to the selected environments. The site still renders without it, but daily cloud snapshots are disabled until the store is connected.
 5. Redeploy after saving environment variables. Git pushes to the connected branch trigger future builds.
 
@@ -52,8 +52,7 @@ Daily snapshots are written once per India calendar date and periodically refres
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | `4173` | Local Node server port |
-| `UPSTOX_ACCESS_TOKEN` | unset | Server-side Upstox Analytics Token; enables primary NIFTY 50 quotes |
-| `UPSTOX_INSTRUMENT_CACHE_SECONDS` | `86400` | Instrument-key cache duration in seconds |
+| `GROWW_ACCESS_TOKEN` | unset | Server-side Groww access token; enables primary NIFTY 50 quotes |
 | `NSE_MCP_URL` | `https://mcp.nseindia.in/cmmkt/mcp` | Optional fallback NSE live CM Market MCP endpoint |
 | `NEWS_REFRESH_SECONDS` | `90` | Headline cache duration |
 | `QUOTE_REFRESH_SECONDS` | `60` | Quote cache duration |
