@@ -71,6 +71,7 @@ function storyCard(item) {
   const moveText = quote && quote.changePct !== null ? signed(quote.changePct) : '—';
   const quoteDate = quote?.marketDate ? formatMarketDate(quote.marketDate, { day:'numeric', month:'short' }).toUpperCase() : '';
   const quotePeriod = quote?.marketDate === todayInIndia() ? 'TODAY' : 'CLOSE';
+  const quoteSource = quote?.source === 'Upstox' ? 'UPSTOX SNAPSHOT' : quote?.source === 'NSE MCP' ? 'NSE MCP SNAPSHOT' : 'NSE SNAPSHOT';
   return `<article class="story-card">
     <div class="story-marker ${tone}">${icons[tone]}</div>
     <div class="story-content">
@@ -79,7 +80,7 @@ function storyCard(item) {
       ${item.description ? `<p class="story-description">${escapeHtml(item.description)}</p>` : ''}
       <div class="story-analysis ${tone}"><span>${icons[tone]}</span><span>${escapeHtml(item.analysis?.remark || 'No clear directional signal in this headline.')}</span><small>${escapeHtml(item.analysis?.basis || 'Headline signal')}</small></div>
     </div>
-    ${quote ? `<div class="story-quote"><span class="quote-label">NSE SNAPSHOT${quoteDate ? ` · ${escapeHtml(quoteDate)}` : ''}</span><strong>${escapeHtml(price)}</strong><span class="quote-change ${quoteClass}">${escapeHtml(moveText)} <small>${escapeHtml(quotePeriod)}</small></span></div>` : ''}
+    ${quote ? `<div class="story-quote"><span class="quote-label">${quoteSource}${quoteDate ? ` · ${escapeHtml(quoteDate)}` : ''}</span><strong>${escapeHtml(price)}</strong><span class="quote-change ${quoteClass}">${escapeHtml(moveText)} <small>${escapeHtml(quotePeriod)}</small></span></div>` : ''}
   </article>`;
 }
 function renderStories() {
@@ -87,7 +88,7 @@ function renderStories() {
   const items = matchingItems();
   list.setAttribute('aria-busy', 'false');
   if (!state.payload) {
-    list.innerHTML = `<div class="loading-state"><span class="spinner"></span><strong>Opening the wire</strong><span>Collecting company headlines and the latest NSE snapshot…</span></div>`;
+    list.innerHTML = `<div class="loading-state"><span class="spinner"></span><strong>Opening the wire</strong><span>Collecting company headlines and the latest market snapshot…</span></div>`;
     return;
   }
   if (!items.length) {
@@ -136,8 +137,10 @@ function renderMarket() {
   const quoteTime = payload?.data?.quotesUpdatedAt;
   const marketDate = payload?.insights?.marketDate || payload?.data?.marketDate;
   const currentQuoteDate = marketDate === todayInIndia() && payload?.market === 'Market open';
-  const sourceDate = marketDate ? `${currentQuoteDate ? 'NSE snapshot' : 'Last close'} · ${formatMarketDate(marketDate)}` : '';
-  $('#indexTimestamp').textContent = sourceDate || (quoteTime ? `Snapshot ${when(quoteTime)} · delayed` : 'Waiting for NSE MCP snapshot');
+  const sourceDate = marketDate ? `${currentQuoteDate ? 'Market snapshot' : 'Last close'} · ${formatMarketDate(marketDate)}` : '';
+  $('#indexTimestamp').textContent = sourceDate || (quoteTime ? `Snapshot ${when(quoteTime)} · ${payload?.data?.quoteDelay || 'delayed'}` : 'Waiting for market snapshot');
+  const provider = payload?.data?.marketProvider;
+  $('#snapshotBadge').innerHTML = `<i></i> ${provider === 'Upstox' ? 'UPSTOX QUOTES' : 'MARKET SNAPSHOT'}`;
   $('#marketDateLabel').textContent = sourceDate;
   $('#marketDateLabel').classList.toggle('hidden', !sourceDate);
   const movers = quotes
@@ -147,7 +150,7 @@ function renderMarket() {
     const value = Number(stock.changePct);
     const tone = value > 0 ? 'up' : value < 0 ? 'down' : 'flat';
     return `<button class="market-tile" type="button" data-symbol="${escapeHtml(stock.symbol)}"><span class="tile-top"><span class="tile-symbol">${escapeHtml(stock.symbol)}</span><span class="tile-arrow">↗</span></span><span class="tile-name">${escapeHtml(stock.name)}</span><span class="tile-bottom"><strong>${Number.isFinite(Number(stock.price)) ? escapeHtml(money.format(Number(stock.price))) : '—'}</strong><span class="quote-change ${tone}">${escapeHtml(signed(value))}</span></span></button>`;
-  }).join('') : `<div class="market-empty"><span>⌁</span><strong>${payload?.data?.mcpError ? 'NSE snapshot unavailable' : 'Waiting for NSE MCP data'}</strong><span>Live quote cards appear when the official market snapshot responds.</span></div>`;
+  }).join('') : `<div class="market-empty"><span>⌁</span><strong>${payload?.data?.mcpError ? 'Market snapshot unavailable' : 'Waiting for market data'}</strong><span>Live quote cards appear when a configured market-data source responds.</span></div>`;
   const bottomFour = quotes
     .sort((a, b) => Number(a.changePct) - Number(b.changePct))
     .slice(0, 4);
@@ -155,13 +158,13 @@ function renderMarket() {
     const value = Number(stock.changePct);
     const tone = value > 0 ? 'up' : value < 0 ? 'down' : 'flat';
     return `<button class="market-tile" type="button" data-symbol="${escapeHtml(stock.symbol)}"><span class="tile-top"><span class="tile-symbol">${escapeHtml(stock.symbol)}</span><span class="tile-arrow">↗</span></span><span class="tile-name">${escapeHtml(stock.name)}</span><span class="tile-bottom"><strong>${Number.isFinite(Number(stock.price)) ? escapeHtml(money.format(Number(stock.price))) : '—'}</strong><span class="quote-change ${tone}">${escapeHtml(signed(value))}</span></span></button>`;
-  }).join('') : `<div class="market-empty"><span>⌁</span><strong>${payload?.data?.mcpError ? 'NSE snapshot unavailable' : 'Waiting for NSE MCP data'}</strong><span>Live quote cards appear when the official market snapshot responds.</span></div>`;
+  }).join('') : `<div class="market-empty"><span>⌁</span><strong>${payload?.data?.mcpError ? 'Market snapshot unavailable' : 'Waiting for market data'}</strong><span>Live quote cards appear when a configured market-data source responds.</span></div>`;
   const railMovers = (payload?.movers || []).slice(0, 5);
   $('#moversList').innerHTML = railMovers.length ? railMovers.map((stock) => {
     const value = Number(stock.changePct || 0);
     const tone = value > 0 ? 'up' : value < 0 ? 'down' : 'flat';
     return `<button class="mover-row" type="button" data-symbol="${escapeHtml(stock.symbol)}"><span class="mover-name"><strong>${escapeHtml(stock.symbol)}</strong><small>${escapeHtml(stock.name)}</small></span><span class="quote-change ${tone}">${escapeHtml(signed(value))}</span></button>`;
-  }).join('') : `<div class="rail-empty">Quote data will appear here when NSE MCP is reachable.</div>`;
+  }).join('') : `<div class="rail-empty">Quote data will appear here when a market-data source is configured.</div>`;
 }
 function renderInsights() {
   const insights = state.payload?.insights;
@@ -218,12 +221,21 @@ function renderStatus() {
   const provider = data.marketProvider || (data.mcpTool ? 'NSE MCP' : '');
   $('#marketStatus').textContent = state.busy ? 'Refreshing snapshot' : (payload?.market || 'Market status unavailable');
   $('#marketPip').classList.toggle('offline', !isAvailable);
-  $('#mcpStatus').textContent = isAvailable
-    ? (provider === 'NSE MCP' ? `NSE MCP / ${data.mcpTool || 'live snapshot'}` : 'NSE / official live-market backup')
-    : state.marketRetrying ? 'NSE / reconnecting' : 'NSE / unavailable';
+  const providerLabel = provider === 'Upstox' ? 'UPSTOX / FULL MARKET QUOTES'
+    : provider === 'NSE MCP' ? 'NSE MCP / BACKUP'
+      : provider === 'NSE live-equity page' ? 'NSE / LIVE-MARKET BACKUP' : '';
+  $('#marketDataStatus').textContent = isAvailable ? providerLabel
+    : state.marketRetrying ? 'MARKET DATA / RECONNECTING'
+      : data.upstoxConfigured ? 'UPSTOX / UNAVAILABLE' : 'UPSTOX / TOKEN NEEDED';
   const quoteIsCurrent = data.marketDate === todayInIndia() && payload?.market === 'Market open';
   const quoteDate = data.marketDate ? `${quoteIsCurrent ? 'NSE session' : 'Last close'} · ${formatMarketDate(data.marketDate)}` : '';
-  $('#mcpFreshness').textContent = isAvailable ? [quoteDate, data.mcpFreshness || `Snapshot ${when(data.quotesUpdatedAt)} · 1–3 min delay`].filter(Boolean).join(' · ') : state.marketRetrying ? 'Retrying official market data automatically' : 'Could not reach official market data';
+  const sourceNote = data.providerWarning && provider !== 'Upstox'
+    ? data.upstoxConfigured ? 'Upstox unavailable; showing NSE backup' : 'Add UPSTOX_ACCESS_TOKEN in Vercel to enable Upstox'
+    : '';
+  $('#marketDataFreshness').textContent = isAvailable
+    ? [quoteDate, data.mcpFreshness || `Snapshot ${when(data.quotesUpdatedAt)} · ${data.quoteDelay || 'delayed'}`, sourceNote].filter(Boolean).join(' · ')
+    : state.marketRetrying ? 'Retrying the configured quote provider automatically'
+      : data.upstoxConfigured ? 'Could not reach Upstox or its fallback sources' : 'Add UPSTOX_ACCESS_TOKEN in Vercel, then redeploy';
   $('#lastUpdated').textContent = data.newsUpdatedAt ? `Last updated ${when(data.newsUpdatedAt)}` : 'Waiting for the first news update';
   if (payload?.data?.errors?.length) $('#lastUpdated').textContent += ` · ${payload.data.errors.length} news source${payload.data.errors.length === 1 ? '' : 's'} unavailable`;
 }
