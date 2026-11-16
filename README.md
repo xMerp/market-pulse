@@ -21,7 +21,9 @@ Generate a Groww API access token from Groww → Profile → Settings → Tradin
 
 Groww documentation: [Live Data API](https://groww.in/trade-api/docs/curl/live-data) and [authentication and token generation](https://groww.in/trade-api/docs/curl).
 
-News searches use Google News RSS, scoped to Moneycontrol, Economic Times, Mint, Business Standard, and Financial Express. Results are matched to NIFTY 50 companies, deduplicated, limited to recent coverage, and linked to the article page. RSS results can be delayed or throttled.
+News searches use Google News RSS, scoped to Moneycontrol, Economic Times, Mint, Business Standard, and Financial Express, with queries focused on company events such as orders, regulatory actions, approvals, investments, results, launches, and acquisitions. Headlines must contain a material-event signal; price-move-only stories (for example, a stock jumping or hitting a high without a stated company event) are filtered out. Results are matched to NIFTY 50 companies, deduplicated, limited to recent coverage, and linked to the article page. This rule-based filter can miss or misclassify ambiguous headlines, and RSS results can be delayed or throttled.
+
+To keep the initial feed responsive, RSS requests time out after 6 seconds and Gemini analyzes at most the 20 newest matched headlines per request with a 6-second timeout. Remaining items use the labeled headline-signal fallback until they are analyzed in a later request.
 
 NSE describes its MCP as informational and educational, not intended for commercial deployment, investment advice, or real-time trading. Review the [NSE MCP terms and disclaimer](https://www.nseindia.com/nse-mcp) before relying on that fallback. Sentiment labels are headline summaries, not forecasts or trade recommendations.
 
